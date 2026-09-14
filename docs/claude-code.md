@@ -190,6 +190,14 @@ seklinde bir satir yazdirir; onu kopyalayip calistir.
 - **Sembolik baglanti yok:** panel klasoru kopyalanir. `git pull` yaptiktan
   sonra `node bin\gelistir.js kurulum --uygula` komutunu tekrar calistir,
   yoksa panel eski kalir.
+- **Ilk guncellemede `--zorla` gerekebilir.** Kurulum, hedefteki klasoru
+  kendi kopyasi olarak taniyabilmek icin icine bir iz dosyasi
+  (`.gelistir-kurulum.json`) birakir. Bu iz yoksa (eski surumle kurulmus)
+  klasor "yabanci" sayilir ve korunur:
+  ```
+  node bin\gelistir.js kurulum --uygula --zorla
+  ```
+  Bir kez yeter; sonraki guncellemeler iz sayesinde bayrak istemez.
 - **PlayerDebugMode** kayit defterine yazilir (`HKCU\Software\Adobe\CSXS.9`
   ile `.12` arasi). Yonetici hakki gerekmez.
 - **ffmpeg** icin `winget install Gyan.FFmpeg` calistirdiktan sonra cmd

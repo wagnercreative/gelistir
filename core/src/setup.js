@@ -19,6 +19,16 @@ export const CSXS_VERSIONS = [9, 10, 11, 12];
 
 export const EXTENSION_ID = "com.gelistir.premiere";
 
+/**
+ * Kopyalanan panele birakilan iz.
+ *
+ * Windows'ta panel sembolik baglanti yerine KOPYALANIYOR, yani hedefte her
+ * zaman normal bir klasor bulunuyor. Bu iz olmadan "bizim kopyaladigimiz
+ * klasor" ile "kullanicinin elle koydugu klasor" ayirt edilemiyor ve her
+ * guncelleme reddediliyordu.
+ */
+export const MARKER_FILE = ".gelistir-kurulum.json";
+
 /** Adobe'un kullanici bazli CEP uzanti dizini. */
 export function cepExtensionsDir({ platform, env = {}, home = "" }) {
   if (platform === "darwin") {
@@ -64,7 +74,7 @@ export function debugModeCommands(platform) {
  * @param {string} params.repoRoot  gelistir deposunun koku
  * @param {boolean} params.copy     sembolik baglanti yerine kopyalama
  */
-export function planSetup({ platform, home, env = {}, repoRoot, copy = false }) {
+export function planSetup({ platform, home, env = {}, repoRoot, copy = false, force = false }) {
   const panelSource = path.join(repoRoot, "premiere-panel");
   const extensionsDir = cepExtensionsDir({ platform, env, home });
   const panelTarget = path.join(extensionsDir, EXTENSION_ID);
@@ -91,11 +101,14 @@ export function planSetup({ platform, home, env = {}, repoRoot, copy = false }) 
     );
   }
 
-  const existing = fs.existsSync(panelTarget)
-    ? fs.lstatSync(panelTarget).isSymbolicLink()
-      ? "symlink"
-      : "directory"
-    : null;
+  // "managed": bu aracin kopyaladigi klasor (iz dosyasi var) - degistirilebilir
+  // "directory": disaridan gelen bir klasor - dokunulmaz
+  let existing = null;
+  if (fs.existsSync(panelTarget)) {
+    if (fs.lstatSync(panelTarget).isSymbolicLink()) existing = "symlink";
+    else if (fs.existsSync(path.join(panelTarget, MARKER_FILE))) existing = "managed";
+    else existing = "directory";
+  }
 
   return {
     platform,
@@ -117,6 +130,7 @@ export function planSetup({ platform, home, env = {}, repoRoot, copy = false }) 
     // bulunamaz, bu yuzden duz sarma guvenli.
     mcpCommand: `claude mcp add premiere -s user -- node "${mcpEntry}"`,
     debugCommands: debugModeCommands(platform),
+    force,
     warnings,
   };
 }
@@ -132,8 +146,14 @@ export function formatPlan(plan, { applied = false } = {}) {
   lines.push(`   yontem : ${plan.link ? "sembolik baglanti" : "kopyalama"}`);
   if (plan.existing === "symlink") {
     lines.push("   not    : hedefte zaten bir baglanti var, yenilenecek");
+  } else if (plan.existing === "managed") {
+    lines.push("   not    : onceki kurulumun kopyasi var, yenilenecek");
   } else if (plan.existing === "directory") {
-    lines.push("   not    : hedefte bir klasor var; UZERINE YAZILMAZ, elle sil");
+    lines.push(
+      plan.force
+        ? "   not    : hedefte bizim olmayan bir klasor var; --zorla verildi, SILINECEK"
+        : "   not    : hedefte bizim olmayan bir klasor var; UZERINE YAZILMAZ (--zorla ile sil)",
+    );
   }
 
   lines.push("", `2. PlayerDebugMode (${verb})`);
@@ -179,20 +199,33 @@ export async function applySetup(plan, { run }) {
   try {
     fs.mkdirSync(plan.extensionsDir, { recursive: true });
 
-    if (plan.existing === "directory") {
+    const foreign = plan.existing === "directory" && !plan.force;
+    if (foreign) {
       failed.push({
         step: "panel",
         error:
-          `${plan.panelTarget} zaten bir klasor. Icinde kendi degisiklikleriniz ` +
-          "olabilir; uzerine yazmiyorum. Elle silip tekrar dene.",
+          `${plan.panelTarget} bu aracin olusturmadigi bir klasor (kurulum izi yok). ` +
+          "Icinde kendi degisiklikleriniz olabilir; uzerine yazmiyorum. " +
+          "Silmek icin: gelistir kurulum --uygula --zorla",
       });
     } else {
       if (plan.existing === "symlink") fs.unlinkSync(plan.panelTarget);
+      else if (plan.existing) fs.rmSync(plan.panelTarget, { recursive: true, force: true });
+
       if (plan.link) {
         fs.symlinkSync(plan.panelSource, plan.panelTarget, "dir");
         done.push(`panel baglandi: ${plan.panelTarget}`);
       } else {
         fs.cpSync(plan.panelSource, plan.panelTarget, { recursive: true });
+        // Sonraki guncellemede "bu kopya bizim" diyebilmek icin iz birak.
+        fs.writeFileSync(
+          path.join(plan.panelTarget, MARKER_FILE),
+          JSON.stringify(
+            { repoRoot: plan.trace.repoRoot, installedAt: new Date().toISOString() },
+            null,
+            2,
+          ) + "\n",
+        );
         done.push(`panel kopyalandi: ${plan.panelTarget}`);
       }
     }

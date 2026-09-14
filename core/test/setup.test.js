@@ -13,6 +13,7 @@ import {
   applySetup,
   CSXS_VERSIONS,
   EXTENSION_ID,
+  MARKER_FILE,
 } from "../src/setup.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -188,6 +189,55 @@ test("mevcut baglanti yenilenir", async () => {
   fs.rmSync(home, { recursive: true, force: true });
 });
 
+test("kopyalama izi birakir ve sonraki kurulum onu yeniler", async () => {
+  // Windows'ta panel kopyalaniyor, yani hedefte her zaman normal bir klasor
+  // olur. Iz olmadan bu "yabanci klasor" sayiliyordu ve panel bir daha
+  // hic guncellenemiyordu.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "gelistir-iz-kopya-"));
+  const first = planSetup({ platform: "win32", home, env: {}, repoRoot });
+  assert.equal(first.link, false, "Windows kopyalar");
+  assert.equal(first.existing, null);
+
+  const r1 = await applySetup(first, { run: async () => {} });
+  assert.deepEqual(r1.failed, []);
+  const marker = path.join(first.panelTarget, MARKER_FILE);
+  assert.ok(fs.existsSync(marker), "iz dosyasi yazilmali");
+  assert.equal(JSON.parse(fs.readFileSync(marker, "utf8")).repoRoot, repoRoot);
+
+  // Eski bir dosya bulunsun; yenileme sonrasi kalmamali
+  const stale = path.join(first.panelTarget, "client", "js", "eski-dosya.js");
+  fs.writeFileSync(stale, "// onceki surumden kalan");
+
+  const second = planSetup({ platform: "win32", home, env: {}, repoRoot });
+  assert.equal(second.existing, "managed", "kendi kopyamiz taninmali");
+  const r2 = await applySetup(second, { run: async () => {} });
+  assert.deepEqual(r2.failed, [], "guncelleme reddedilmemeli");
+  assert.ok(r2.done.some((d) => d.includes("panel kopyalandi")));
+  assert.equal(fs.existsSync(stale), false, "eski dosya temizlenmeli");
+  assert.ok(fs.existsSync(path.join(second.panelTarget, "host", "gelistir.jsx")));
+
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
+test("--zorla yabanci klasoru siler", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "gelistir-zorla-"));
+  const target = planSetup({ platform: "win32", home, env: {}, repoRoot }).panelTarget;
+  fs.mkdirSync(target, { recursive: true });
+  fs.writeFileSync(path.join(target, "yabanci.txt"), "benim dosyam");
+
+  const plan = planSetup({ platform: "win32", home, env: {}, repoRoot, force: true });
+  assert.equal(plan.existing, "directory");
+  assert.equal(plan.force, true);
+  assert.match(formatPlan(plan), /--zorla verildi, SILINECEK/);
+
+  const { failed } = await applySetup(plan, { run: async () => {} });
+  assert.deepEqual(failed, []);
+  assert.equal(fs.existsSync(path.join(target, "yabanci.txt")), false);
+  assert.ok(fs.existsSync(path.join(target, "CSXS", "manifest.xml")));
+
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
 test("hedefte gercek klasor varsa uzerine YAZILMAZ", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "gelistir-kur-klasor-"));
   const plan = planSetup({ platform: "darwin", home, env: {}, repoRoot });
@@ -199,7 +249,8 @@ test("hedefte gercek klasor varsa uzerine YAZILMAZ", async () => {
   const { failed } = await applySetup(reread, { run: async () => {} });
 
   assert.equal(failed.length, 1);
-  assert.match(failed[0].error, /zaten bir klasor/);
+  assert.match(failed[0].error, /kurulum izi yok/);
+  assert.match(failed[0].error, /--zorla/, "cikis yolu soylenmeli");
   assert.equal(
     fs.readFileSync(path.join(plan.panelTarget, "benim-dosyam.txt"), "utf8"),
     "elle yaptigim degisiklik",

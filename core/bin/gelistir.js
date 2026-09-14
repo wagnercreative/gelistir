@@ -39,6 +39,7 @@ function parseFlags(args) {
     else if (a === "--lang") flags.language = args[++i];
     else if (a === "--uygula") flags.apply = true;
     else if (a === "--kopyala") flags.copy = true;
+    else if (a === "--zorla") flags.force = true;
     else if (a === "--no-subs") flags.subtitles = false;
     else if (a === "--burn-subs") flags.burnSubtitles = true;
     else if (a === "--keep-fillers") flags.removeFillers = false;
@@ -67,6 +68,7 @@ Komutlar:
 Secenekler:
   --uygula             kurulum: plani gercekten uygula (varsayilan: sadece goster)
   --kopyala            kurulum: sembolik baglanti yerine kopyala
+  --zorla              kurulum: hedefteki yabanci klasoru sil
   -o, --out <dizin>    paket dizini (varsayilan: <video>-youtube)
   --srt <dosya>        hazir dokum kullan (whisper yoksa)
   --lang <kod>         konusma dili (bos = otomatik)
@@ -128,6 +130,7 @@ async function main() {
       env: process.env,
       repoRoot,
       copy: Boolean(flags.copy),
+      force: Boolean(flags.force),
     });
 
     if (!flags.apply) {

@@ -258,6 +258,15 @@ baslarken okunuyor; sonradan export etmek yetmez.
 Onceki tur bitmemis. "dusunuyor" yazisi kaybolana kadar bekle, ya da
 **Yeni oturum**a bas.
 
+**Kurulum "hedefte bizim olmayan bir klasor var" diyor**
+CEP dizinindeki panel klasoru bu aracin kopyasi olarak taninmiyor - ya elle
+koyduysan ya da iz dosyasi eklenmeden onceki bir surumle kuruldu. Icinde
+kendi degisikligin yoksa:
+```
+gelistir kurulum --uygula --zorla
+```
+Bir kez yeter; sonrasinda iz dosyasi sayesinde bayrak gerekmez.
+
 **Kesimler cok agresif**
 ```bash
 gelistir config maxRemovedRatio=0.2 minSilence=0.7 removeFillers=false
