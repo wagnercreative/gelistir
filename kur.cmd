@@ -26,8 +26,16 @@ call node bin\gelistir.js kurulum --uygula
 if errorlevel 1 goto :hata
 
 echo.
-echo Kurulum bitti. Yukaridaki "claude mcp add" komutunu kopyalayip
-echo cmd penceresine yapistir, sonra Premiere Pro'yu kapat ve tekrar ac.
+echo ==============================================
+echo  Kurulum bitti. Iki sey kaldi:
+echo ==============================================
+echo.
+echo  1) Yukaridaki "claude mcp add" komutunu kopyalayip yapistir.
+echo.
+echo  2) Cekirdegi baslat: depo kokundeki sunucu.cmd dosyasina cift tikla
+echo     ve o pencereyi ACIK TUT. Premiere paneli ona baglanir.
+echo.
+echo  Sonra Premiere Pro'yu kapat ve tekrar ac.
 echo.
 pause
 exit /b 0

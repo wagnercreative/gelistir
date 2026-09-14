@@ -23,5 +23,9 @@ echo "=============================================="
 node bin/gelistir.js kurulum --uygula
 
 echo
-echo "Kurulum bitti. Yukaridaki 'claude mcp add' komutunu kopyalayip"
-echo "terminale yapistir, sonra Premiere Pro'yu kapat ve tekrar ac."
+echo "Kurulum bitti. Iki sey kaldi:"
+echo
+echo "  1) Yukaridaki 'claude mcp add' komutunu kopyalayip yapistir."
+echo "  2) Cekirdegi baslat ve terminali acik tut:  sh sunucu.sh"
+echo
+echo "Sonra Premiere Pro'yu kapat ve tekrar ac."

@@ -145,14 +145,22 @@ async function main() {
     for (const item of done) process.stdout.write(`  OK    ${item}\n`);
     for (const item of failed) process.stdout.write(`  HATA  ${item.step} - ${item.error}\n`);
 
+    const serveCommand = `node "${path.join(repoRoot, "core", "bin", "gelistir.js")}" serve`;
+
     process.stdout.write(
       [
         "",
         "Sirada:",
         `  1. ${plan.mcpCommand}`,
-        "  2. Premiere Pro'yu TAMAMEN kapat ve tekrar ac",
-        "  3. Pencere > Uzantilar > Gelistir - YouTube kurgu",
-        "  4. Panelde 'Kopru acik - Claude Code kullanabilir' yazmali",
+        "",
+        "  2. Cekirdegi baslat ve pencereyi ACIK TUT:",
+        `     ${serveCommand}`,
+        "     (Premiere paneli buna baglanir. Claude Code'un MCP sunucusu da",
+        "      cekirdegi kendi baslatir, ama o oturumla beraber kapanir.)",
+        "",
+        "  3. Premiere Pro'yu TAMAMEN kapat ve tekrar ac",
+        "  4. Pencere > Uzantilar > Gelistir - YouTube kurgu",
+        "  5. Panelde 'Kopru acik - Claude Code kullanabilir' yazmali",
         "",
       ].join("\n"),
     );
