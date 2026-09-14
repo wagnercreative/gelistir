@@ -150,19 +150,22 @@ Dürüst olmak gerekirse bunlar **elle** yapilacak isler:
 ## Hizli baslangic
 
 ```bash
-# 1. Cekirdek
+# 0. ffmpeg gerekli:  brew install ffmpeg  /  winget install Gyan.FFmpeg
+
 cd core
 npm install
+node bin/gelistir.js doctor            # ffmpeg/whisper kontrolu
 
-# 2. Gereksinimleri kontrol et
-node bin/gelistir.js doctor
+node bin/gelistir.js kurulum           # ne yapacagini gosterir
+node bin/gelistir.js kurulum --uygula  # paneli yerine koyar, izni acar
 
-# 3. Claude Code'a ekle
 claude mcp add premiere -- node "$(pwd)/bin/gelistir-mcp.js"
 
-# 4. Premiere'i ac: Pencere > Uzantilar > Gelistir
-#    Panelde "Kopru acik" yaziyorsa hazir.
+# Premiere'i kapat-ac, sonra: Pencere > Uzantilar > Gelistir
+# Panelde "Kopru acik - Claude Code kullanabilir" yaziyorsa hazir.
 ```
+
+Adim adim: **[docs/claude-code.md](docs/claude-code.md)**
 
 Premiere olmadan denemek icin (ANTHROPIC_API_KEY gerekir):
 
@@ -193,6 +196,7 @@ whisper icin `whisper` (OpenAI CLI), `whisper-cli` / `whisper-cpp`
 ## Komutlar
 
 ```bash
+gelistir kurulum          # paneli yerine koy, PlayerDebugMode'u ac
 gelistir-mcp              # MCP sunucusu (Claude Code bunu calistirir)
 gelistir run <video>      # bastan sona: yayina hazir paket
 gelistir plan <video>     # sadece dokum + kesim plani (panel bunu kullanir)

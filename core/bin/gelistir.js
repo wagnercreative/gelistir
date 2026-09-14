@@ -12,8 +12,12 @@
  */
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import os from "node:os";
 
 import { loadConfig, saveConfig, configPath, DEFAULTS } from "../src/config.js";
+import { planSetup, formatPlan, applySetup } from "../src/setup.js";
 import { serve, ensureToken, tokenPath } from "../src/server.js";
 import { runPipeline } from "../src/pipeline.js";
 import { detectWhisper } from "../src/transcribe.js";
@@ -33,6 +37,8 @@ function parseFlags(args) {
     else if (a === "--srt") flags.srt = args[++i];
     else if (a === "--model") flags.model = args[++i];
     else if (a === "--lang") flags.language = args[++i];
+    else if (a === "--uygula") flags.apply = true;
+    else if (a === "--kopyala") flags.copy = true;
     else if (a === "--no-subs") flags.subtitles = false;
     else if (a === "--burn-subs") flags.burnSubtitles = true;
     else if (a === "--keep-fillers") flags.removeFillers = false;
@@ -49,6 +55,7 @@ Claude Code'dan Premiere'e baglanmak icin MCP sunucusunu ekle:
   claude mcp add premiere -- node <bu-dizin>/bin/gelistir-mcp.js
 
 Komutlar:
+  gelistir kurulum [--uygula]     paneli yerine koy, PlayerDebugMode'u ac
   gelistir serve
   gelistir run <video> [-o dizin] [--srt dokum.srt] [--lang tr] [--burn-subs]
   gelistir plan <video> [-o dizin]
@@ -58,6 +65,8 @@ Komutlar:
   gelistir token
 
 Secenekler:
+  --uygula             kurulum: plani gercekten uygula (varsayilan: sadece goster)
+  --kopyala            kurulum: sembolik baglanti yerine kopyala
   -o, --out <dizin>    paket dizini (varsayilan: <video>-youtube)
   --srt <dosya>        hazir dokum kullan (whisper yoksa)
   --lang <kod>         konusma dili (bos = otomatik)
@@ -107,6 +116,46 @@ async function main() {
     }
     const saved = saveConfig(patch);
     process.stdout.write(`${configPath()} guncellendi:\n${JSON.stringify(saved, null, 2)}\n`);
+    return;
+  }
+
+  if (command === "kurulum" || command === "setup") {
+    const { flags } = parseFlags(argv.slice(1));
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const plan = planSetup({
+      platform: process.platform,
+      home: os.homedir(),
+      env: process.env,
+      repoRoot,
+      copy: Boolean(flags.copy),
+    });
+
+    if (!flags.apply) {
+      process.stdout.write(`${formatPlan(plan)}\n\n`);
+      process.stdout.write(
+        "Bunlar henuz YAPILMADI. Uygulamak icin:\n  gelistir kurulum --uygula\n",
+      );
+      return;
+    }
+
+    process.stdout.write(`${formatPlan(plan)}\n\nUygulaniyor...\n\n`);
+    const { done, failed } = await applySetup(plan, {
+      run: (command_, args) => run(command_, args),
+    });
+    for (const item of done) process.stdout.write(`  OK    ${item}\n`);
+    for (const item of failed) process.stdout.write(`  HATA  ${item.step} - ${item.error}\n`);
+
+    process.stdout.write(
+      [
+        "",
+        "Sirada:",
+        `  1. ${plan.mcpCommand}`,
+        "  2. Premiere Pro'yu TAMAMEN kapat ve tekrar ac",
+        "  3. Pencere > Uzantilar > Gelistir - YouTube kurgu",
+        "  4. Panelde 'Kopru acik - Claude Code kullanabilir' yazmali",
+        "",
+      ].join("\n"),
+    );
     return;
   }
 

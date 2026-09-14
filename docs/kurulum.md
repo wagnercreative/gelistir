@@ -30,6 +30,7 @@ gelistir config ffmpeg=/opt/ffmpeg/bin/ffmpeg ffprobe=/opt/ffmpeg/bin/ffprobe
 ```
 
 ### whisper (onerilir)
+<a id="whisper-onerilir"></a>
 
 Dokum olmadan sistem yalniz sessizlik kesimi yapar: dolgu sozcugu temizligi,
 altyazi, bolumler ve YouTube metinleri uretilemez. Uc secenek:
@@ -90,6 +91,10 @@ cd core && npm link      # artik her yerde `gelistir` yazabilirsin
 ---
 
 ## 2. Premiere paneli
+
+> **Kolay yol:** `gelistir kurulum` bu bolumun a ve b adimlarini otomatik
+> yapar. Once plani gosterir, `--uygula` ile uygular. Asagidaki elle
+> yapma adimlari bir sey ters giderse ya da ne oldugunu gormek istersen.
 
 ### a) Imzasiz panellere izin ver
 

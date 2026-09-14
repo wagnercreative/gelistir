@@ -18,22 +18,52 @@ Premiere icindeki panel cekirdege baglanip "bana is ver" diye bekliyor.
 
 ---
 
-## Kurulum (uc adim)
+## Kurulum
 
-### 1. Cekirdek
+### 1. ffmpeg (zorunlu)
 
 ```bash
+brew install ffmpeg              # macOS
+winget install Gyan.FFmpeg       # Windows
+```
+
+whisper onerilir (dokum olmadan sadece sessizlik kesimi yapilir) -
+secenekler: [kurulum.md](kurulum.md#whisper-onerilir)
+
+### 2. Depoyu al ve paketleri kur
+
+```bash
+git clone https://github.com/wagnercreative/gelistir.git
 cd gelistir/core
 npm install
+node bin/gelistir.js doctor      # ffmpeg/whisper kontrolu
 ```
 
-ffmpeg gerekli, whisper onerilir - ayrintilar: [kurulum.md](kurulum.md)
+### 3. Paneli yerine koy
+
+Bu adim iki sey yapar: panel klasorunu Adobe'un CEP uzanti dizinine baglar
+ve imzasiz panellere izin veren `PlayerDebugMode` ayarini yazar. Once ne
+yapacagini gosterir:
 
 ```bash
-node bin/gelistir.js doctor
+node bin/gelistir.js kurulum
 ```
 
-### 2. MCP sunucusunu Claude Code'a ekle
+Plani begenirsen uygula:
+
+```bash
+node bin/gelistir.js kurulum --uygula
+```
+
+Elle yapmak istersen adimlar: [kurulum.md](kurulum.md#2-premiere-paneli)
+
+> Windows'ta sembolik baglanti yonetici hakki ister, o yuzden orada
+> varsayilan kopyalamadir. `git pull` sonrasi `kurulum --uygula`'yi tekrar
+> calistir. macOS'ta baglanti kurulur, guncelleme kendiliginden gecer.
+
+### 4. MCP sunucusunu Claude Code'a ekle
+
+Onceki adim sana tam komutu yazdirir; yol senin diskindeki yol olur:
 
 ```bash
 claude mcp add premiere -- node /tam/yol/gelistir/core/bin/gelistir-mcp.js
@@ -49,15 +79,23 @@ claude mcp list
 **sart degil**: MCP sunucusu cekirdegi kendi surecinde baslatir. Zaten
 calisan bir cekirdek varsa ona baglanir.
 
-### 3. Premiere panelini ac
+### 5. Premiere'i ac
 
-Panel kurulumu (tek seferlik): [kurulum.md](kurulum.md) - `PlayerDebugMode`
-ayari ve klasoru kopyalama.
+Premiere Pro'yu **tamamen kapat ve tekrar ac** (uzanti listesi acilista
+okunur), sonra:
 
-Sonra Premiere'de: **Pencere > Uzantilar > Gelistir - YouTube kurgu**
+**Pencere > Uzantilar > Gelistir - YouTube kurgu**
 
-Panelde ucuncu satir **"Kopru acik - Claude Code kullanabilir"** yazmali.
-Yazmiyorsa panel cekirdege ulasamiyor; paneldeki yenile dugmesine bas.
+Panelde uc satir gormelisin; ucuncusu onemli:
+
+```
+Premiere 25.x - ProjeAdi / SequenceAdi
+Cekirdek bagli - claude-opus-5
+Kopru acik - Claude Code kullanabilir      <-- bu yaziyorsa hazir
+```
+
+Ucuncu satir yazmiyorsa panel cekirdege ulasamiyor; paneldeki yenile
+dugmesine bas.
 
 ---
 
