@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.DS_Store
+# Kurgu ciktilari ve gecici dosyalar
+*-youtube/
+.work/

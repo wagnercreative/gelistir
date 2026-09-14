@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Gelistir - Premiere Pro CEP paneli.
+  Premiere masaustu uygulamasi oldugu icin bir Chrome eklentisi onu kontrol edemez;
+  Premiere'in icine giren sey bir CEP panelidir. Bu dosya o paneli tanimlar.
+-->
+<ExtensionManifest Version="11.0" ExtensionBundleId="com.gelistir.premiere"
+                   ExtensionBundleVersion="0.1.0"
+                   ExtensionBundleName="Gelistir"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ExtensionList>
+    <Extension Id="com.gelistir.premiere.panel" Version="0.1.0" />
+  </ExtensionList>
+
+  <ExecutionEnvironment>
+    <HostList>
+      <!-- PPRO = Premiere Pro. 15.0 = 2021 surumu; sonraki surumler de kapsanir. -->
+      <Host Name="PPRO" Version="[15.0,99.9]" />
+    </HostList>
+    <LocaleList>
+      <Locale Code="All" />
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="9.0" />
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+
+  <DispatchInfoList>
+    <Extension Id="com.gelistir.premiere.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./client/index.html</MainPath>
+          <ScriptPath>./host/gelistir.jsx</ScriptPath>
+          <CEFCommandLine>
+            <!-- Panelin yerel cekirdege baglanmasi ve token dosyasini okumasi icin. -->
+            <Parameter>--enable-nodejs</Parameter>
+            <Parameter>--allow-file-access-from-files</Parameter>
+          </CEFCommandLine>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>Gelistir - YouTube kurgu</Menu>
+          <Geometry>
+            <Size><Height>620</Height><Width>380</Width></Size>
+            <MinSize><Height>420</Height><Width>320</Width></MinSize>
+          </Geometry>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>

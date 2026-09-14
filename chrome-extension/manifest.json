@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Gelistir - YouTube yayina hazirlik",
+  "version": "0.1.0",
+  "description": "Yerel gelistir-core ile uretilen baslik, aciklama, bolumler ve etiketleri YouTube Studio'ya doldurur.",
+  "permissions": ["storage", "activeTab", "scripting", "clipboardWrite"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*", "https://studio.youtube.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Gelistir",
+    "default_icon": { "16": "icons/icon-16.png", "48": "icons/icon-48.png" }
+  },
+  "icons": { "16": "icons/icon-16.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://studio.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

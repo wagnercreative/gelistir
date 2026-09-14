@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Gelistir</title>
+    <style>
+      body { width: 320px; margin: 0; padding: 12px; font: 13px/1.5 system-ui, sans-serif; color: #1c1c1c; }
+      h1 { font-size: 14px; margin: 0 0 2px; }
+      .sub { color: #666; font-size: 11px; margin: 0 0 10px; }
+      .status { padding: 6px 8px; border-radius: 4px; background: #f2f2f2; border-left: 3px solid #ccc; font-size: 12px; word-break: break-word; }
+      .status.ok { border-left-color: #2e7d4f; }
+      .status.bad { border-left-color: #c0392b; }
+      button { width: 100%; margin-top: 8px; padding: 7px; font: inherit; border-radius: 4px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+      button.primary { background: #4a90d9; border-color: #4a90d9; color: #fff; }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .meta { margin-top: 10px; font-size: 12px; }
+      .meta h2 { font-size: 11px; text-transform: uppercase; color: #666; margin: 8px 0 2px; letter-spacing: .05em; }
+      .meta p { margin: 0; }
+      .meta pre { white-space: pre-wrap; background: #f7f7f7; padding: 6px; border-radius: 4px; max-height: 110px; overflow: auto; font-size: 11px; margin: 2px 0 0; }
+      .warn { color: #a35c00; font-size: 11px; margin-top: 6px; }
+      .note { color: #666; font-size: 11px; margin-top: 8px; border-top: 1px solid #eee; padding-top: 6px; }
+      a { color: #4a90d9; }
+    </style>
+  </head>
+  <body>
+    <h1>Gelistir</h1>
+    <p class="sub">Yayina hazir metinleri YouTube Studio'ya doldurur</p>
+
+    <div id="status" class="status">Cekirdege baglaniyor...</div>
+
+    <button id="refresh">Son isi getir</button>
+    <button id="fill" class="primary" disabled>Studio alanlarini doldur</button>
+    <button id="copy" disabled>Aciklamayi kopyala</button>
+
+    <div id="meta" class="meta"></div>
+
+    <p class="note">
+      Yayinla dugmesine bu eklenti hicbir zaman basmaz. Gorunurluk, kapak ve
+      yayin zamanini sen seciyorsun.
+      <a href="options.html" target="_blank">Ayarlar</a>
+    </p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

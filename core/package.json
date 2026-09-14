@@ -1,0 +1,20 @@
+{
+  "name": "gelistir-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Claude destekli, YouTube'a yayina hazir video kurgu cekirdegi (Premiere Pro paneli ve Chrome eklentisi bu cekirdegi kullanir).",
+  "bin": {
+    "gelistir": "./bin/gelistir.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "serve": "node bin/gelistir.js serve",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.70.0"
+  }
+}

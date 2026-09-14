@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Gelistirme sirasinda paneli Chrome DevTools ile acmak icin: http://localhost:8099 -->
+<ExtensionList>
+  <Extension Id="com.gelistir.premiere.panel">
+    <HostList>
+      <Host Name="PPRO" Port="8099" />
+    </HostList>
+  </Extension>
+</ExtensionList>
