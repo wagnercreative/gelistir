@@ -386,9 +386,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <button class="btn btn-primary btn-sm" onclick="personelSablonIndir()" title="Personel bilgilerini Excel'de doldurup geri yüklemek için şablon indirir (mevcut liste varsa şablon dolu gelir)">📥 Personel Bilgilerini Yüklemek Üzere Şablon İndir</button>
       <button class="btn btn-primary btn-sm" onclick="document.getElementById('personelSablonDosya').click()" title="Doldurulmuş şablonu (xlsx/xls/ods/csv) personel listesine yükler">📂 Personel Bilgilerini Şablondan Yükle</button>
       <input type="file" id="personelSablonDosya" accept=".xlsx,.xls,.ods,.csv" style="display:none" onchange="personelSablonOku(this)">
-      <button class="btn btn-warning btn-sm" onclick="document.getElementById('personelPdfDosya').click()" title="'E-Bildirge XML Dökümü Listesi' PDF'indeki sigortalıları (TC, ad, soyad, belge türü, ücret, prim günü, işe giriş/çıkış, eksik gün ve nedenleri) personel listesine aktarır; Ücret sütunu MAAŞ olarak yazılır">📄 PDF'den Aktar (Maaş)</button>
-      <input type="file" id="personelPdfDosya" accept=".pdf,application/pdf" style="display:none" onchange="pdfPersonelAktar(this)">
-      <span class="text-muted">Şablon: xlsx/ods/csv · PDF: SGK E-Bildirge XML Dökümü Listesi</span>
+      <button class="btn btn-warning btn-sm" onclick="document.getElementById('personelPdfDosya').click()" title="'E-Bildirge XML Dökümü Listesi' dosyasındaki sigortalıları (TC/SGNO, ad, soyad, belge türü, kanun no, ücret, ikramiye, prim günü, işe giriş/çıkış, eksik gün ve nedenleri) personel listesine aktarır. Dosya PDF veya Excel (xlsx/xls/ods/csv) olabilir; Ücret sütunu MAAŞ olarak yazılır">📄 PDF/Excel'den Aktar (Maaş)</button>
+      <input type="file" id="personelPdfDosya" accept=".pdf,application/pdf,.xlsx,.xls,.ods,.csv" style="display:none" onchange="pdfPersonelAktar(this)">
+      <span class="text-muted">Şablon: xlsx/ods/csv · E-Bildirge XML Dökümü Listesi: pdf · xlsx · ods · csv</span>
     </div>
 
     <div class="tbl-wrap">
@@ -3175,6 +3175,9 @@ function sablonSutunEsle(baslik){
   const map = {};
   const kurallar = [
     ['tc',        ['tckimlik','tcno','tc','kimlikno','sgno']],
+    // sicil ve "ilk soyadı" ad/soyad sütunlarını kapmasın diye onlardan önce eşlenir
+    ['sicil',     ['sicilnumarası','sicilnumarasi','sicilno','sigortalısicil']],
+    ['ilkSoyad',  ['ilksoyadı','ilksoyadi','ilksoyad']],
     ['ad',        ['adı','adi','ad','sigortalıadı','isim']],
     ['soyad',     ['soyadı','soyadi','soyad']],
     ['belge',     ['belgetürü','belgeturu','belge']],
@@ -3234,37 +3237,90 @@ function tcOku(v){
   return String(v).replace(/\D/g,'');
 }
 
+// ---- ORTAK ÇALIŞMA KİTABI OKUYUCU (ŞABLON + SGK "E-BİLDİRGE XML DÖKÜMÜ LİSTESİ") ----
+// Hem uygulamanın kendi personel şablonunu, hem de SGK "E-Bildirge XML Dökümü Listesi"
+// dökümünün Excel biçimini okur. İkinci biçimin başlıkları:
+//   S.No | Belge Türü | Kanun No (5 Hane) | Sigortalı Sicil Numarası | SGNO (TC. Kimlik No) |
+//   Sigortalı Adı | Sigortalı Soyadı | Sigortalı İlk Soyadı | Ücret (TL) | İkramiye (TL) |
+//   Prim Öd. Günü | İşe Giriş Tarihi | İşten Çıkış Tar. | Eksik Gün | E. Gün Nedeni | İşten Çık. Nedeni
+// Başlık satırı otomatik bulunur; üstündeki kurum/dönem satırları atlanır. Ücret → MAAŞ alanına yazılır.
+
+// Eşleşmiş sütun haritasına göre tek bir satırı personel kaydına çevirir (TC yoksa null)
+function kitapSatirOku(r, map){
+  const al = alan => map[alan]===undefined ? undefined : r[map[alan]];
+  const tc = tcOku(al('tc'));
+  if(!/^\d{11}$/.test(tc)) return null;
+  const g = {tc};
+  g.ad = String(al('ad')||'').trim().toLocaleUpperCase('tr');
+  g.soyad = String(al('soyad')||'').trim().toLocaleUpperCase('tr');
+  g.belge = al('belge')!==undefined && String(al('belge')).trim()!=='' ? String(al('belge')).trim() : undefined;
+  g.kanun = al('kanun')!==undefined && String(al('kanun')).trim()!=='' ? String(al('kanun')).trim().padStart(5,'0') : undefined;
+  ['maas','ikramiye','primOdGun','eksikGun','eksikNeden','cikisNeden','meslekKod'].forEach(a=>{ const v=al(a); if(v!==undefined && String(v).trim()!=='') g[a]=sayiOku(v); });
+  if(al('iseGiris')!==undefined) g.iseGiris = ggaaOku(al('iseGiris'));
+  if(al('istenCikis')!==undefined) g.istenCikis = ggaaOku(al('istenCikis'));
+  if(al('istirahat')!==undefined) g.istirahat = String(al('istirahat')||'').trim();
+  return g;
+}
+
+// CSV/metin dosyalarını doğru kod sayfasıyla çözer: önce UTF-8, olmazsa Windows-1254 (Excel TR)
+// Bayt dizisi olarak okunan Türkçe CSV'lerde başlıklar bozulup sütunlar eşleşmiyordu.
+function metinCoz(buf){
+  const bytes = new Uint8Array(buf);
+  try{
+    const t = new TextDecoder('utf-8', {fatal:true}).decode(bytes);
+    return t.charCodeAt(0)===0xFEFF ? t.slice(1) : t;   // BOM'u at
+  }catch(e){
+    try{ return new TextDecoder('windows-1254').decode(bytes); }
+    catch(e2){ return new TextDecoder().decode(bytes); }
+  }
+}
+
+// Çalışma kitabını tarar; kayıt bulunan ilk sayfayı döndürür ({gelen, sayfa, ustBilgi}) ya da null
+function calismaKitabiAyristir(buf, dosyaAdi){
+  const csvMi = /\.(csv|txt)$/i.test(String(dosyaAdi||''));
+  const wb = csvMi ? XLSX.read(metinCoz(buf), {type:'string', cellDates:true})
+                   : XLSX.read(new Uint8Array(buf), {type:'array', cellDates:true});
+  const personelMi = n => String(n).toLocaleLowerCase('tr').includes('personel');
+  const sayfalar = wb.SheetNames.slice().sort((a,b)=>(personelMi(b)?1:0)-(personelMi(a)?1:0));
+  for(const sn of sayfalar){
+    const m = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true, defval:''});
+    // başlık satırı: TC/SGNO sütunuyla birlikte en az bir alan daha eşleşen ilk satır
+    let bi=-1, map=null;
+    for(let i=0;i<Math.min(m.length,30);i++){
+      const aday = sablonSutunEsle(m[i]||[]);
+      if(aday.tc!==undefined && Object.keys(aday).length>=2){ bi=i; map=aday; break; }
+    }
+    if(bi<0) continue;
+    const gelen=[];
+    for(let i=bi+1;i<m.length;i++){ const g = kitapSatirOku(m[i]||[], map); if(g) gelen.push(g); }
+    if(gelen.length){
+      const ustBilgi = m.slice(0,bi).reduce((a,r)=>a.concat(r||[]),[]).filter(v=>String(v).trim()).join(' ').trim();
+      return {gelen, sayfa:sn, ustBilgi};
+    }
+  }
+  return null;
+}
+
+// Dosyanın üst başlığındaki ay adı ile bildirgede seçili ay farklıysa uyarı metni üretir
+function ebildirgeDonemUyarisi(ustBilgi){
+  if(!ustBilgi) return '';
+  const t = String(ustBilgi).toLocaleLowerCase('tr');
+  const kod = Object.keys(AY_ADLARI).find(k=>t.includes(AY_ADLARI[k].toLocaleLowerCase('tr')));
+  if(!kod) return '';
+  const sec = document.getElementById('ay').value;
+  if(!sec || sec===kod) return '';
+  return `\n⚠️ Dosya ${AY_ADLARI[kod]} ayına ait görünüyor; bildirgede ${AY_ADLARI[sec]||sec} seçili.`;
+}
+
 function personelSablonOku(inp){
   const f = inp.files[0]; if(!f) return;
   if(typeof XLSX==='undefined'){ alert('Excel kütüphanesi yüklenemedi.'); inp.value=''; return; }
   const rd = new FileReader();
   rd.onload = ()=>{
     try{
-      const wb = XLSX.read(new Uint8Array(rd.result), {type:'array', cellDates:true});
-      const sn = wb.SheetNames.find(n=>n.toLocaleLowerCase('tr').includes('personel')) || wb.SheetNames[0];
-      const m = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true, defval:''});
-      // başlık satırı: "tc" içeren ilk satır
-      let bi = m.findIndex(r=>r.some(c=>sablonNorm(c).includes('tc')||sablonNorm(c).includes('kimlik')));
-      if(bi<0) throw new Error('Başlık satırı bulunamadı (TC Kimlik No sütunu yok). Şablondaki başlıkları koruyunuz.');
-      const map = sablonSutunEsle(m[bi]);
-      if(map.tc===undefined) throw new Error('TC Kimlik No sütunu eşleşmedi.');
-      const gelen=[];
-      for(let i=bi+1;i<m.length;i++){
-        const r=m[i]; const tc=tcOku(r[map.tc]);
-        if(!/^\d{11}$/.test(tc)) continue;
-        const g={tc};
-        const al=(alan)=> map[alan]===undefined ? undefined : r[map[alan]];
-        g.ad = String(al('ad')||'').trim().toLocaleUpperCase('tr'); g.soyad = String(al('soyad')||'').trim().toLocaleUpperCase('tr');
-        g.belge = al('belge')!==undefined && String(al('belge')).trim()!=='' ? String(al('belge')).trim() : undefined;
-        g.kanun = al('kanun')!==undefined && String(al('kanun')).trim()!=='' ? String(al('kanun')).trim().padStart(5,'0') : undefined;
-        ['maas','ikramiye','primOdGun','eksikGun','eksikNeden','cikisNeden','meslekKod'].forEach(a=>{ const v=al(a); if(v!==undefined && String(v).trim()!=='') g[a]=sayiOku(v); });
-        if(al('iseGiris')!==undefined) g.iseGiris = ggaaOku(al('iseGiris'));
-        if(al('istenCikis')!==undefined) g.istenCikis = ggaaOku(al('istenCikis'));
-        if(al('istirahat')!==undefined) g.istirahat = String(al('istirahat')||'').trim();
-        gelen.push(g);
-      }
-      if(!gelen.length) throw new Error('Geçerli (11 haneli TC içeren) satır bulunamadı.');
-      personelTopluUygula(gelen, `Şablon: ${f.name}`, 'sablon');
+      const sonuc = calismaKitabiAyristir(rd.result, f.name);
+      if(!sonuc) throw new Error('Başlık satırı bulunamadı veya 11 haneli TC içeren satır yok. Şablondaki başlıkları koruyunuz (TC Kimlik No sütunu zorunludur).');
+      personelTopluUygula(sonuc.gelen, `Şablon: ${f.name}`, 'sablon');
     }catch(err){ alert('Şablon okunamadı: '+err.message); }
     inp.value='';
   };
@@ -3289,7 +3345,7 @@ function personelTopluUygula(gelen, kaynakAdi, mod){
     else { p = normalizePersonel({sira:personeller.length+1, tc:g.tc, ad:'', soyad:'', ucret:0, maas:0, ikramiye:0, primOdGun:0, iseGiris:'', istenCikis:'', eksikGun:0, eksikNeden:0, cikisNeden:0, meslekKod:0, belge:13, kanun:'00000', istirahat:''}); personeller.push(p); tcMap[g.tc]=personeller.length-1; ekl++; }
     if(g.ad) p.ad=g.ad; if(g.soyad) p.soyad=g.soyad;
     if(g.belge!==undefined) p.belge=g.belge; if(g.kanun!==undefined) p.kanun=g.kanun;
-    if(g.maas!==undefined){ p.maas=g.maas; p.maasNot = mod==='pdf' ? `PDF aktarım ${new Date().toLocaleDateString('tr-TR')}` : (p.maasNot||''); }
+    if(g.maas!==undefined){ p.maas=g.maas; const kaynakEtiket = mod==='pdf' ? 'PDF' : (mod==='excel' ? 'Excel' : ''); p.maasNot = kaynakEtiket ? `${kaynakEtiket} aktarım ${new Date().toLocaleDateString('tr-TR')}` : (p.maasNot||''); }
     ['ikramiye','primOdGun','eksikGun','eksikNeden','cikisNeden','meslekKod','iseGiris','istenCikis','istirahat'].forEach(a=>{ if(g[a]!==undefined) p[a]=g[a]; });
     p.ucret = ucretHesapla(p);
   });
@@ -3336,12 +3392,25 @@ function personelPdfAyristir(sayfalar){
       else if(s==='Adı') cols.ad=it.x; else if(s==='Soyadı'){ if(soyadSayac===0) cols.soyad=it.x; else cols.ilk=it.x; soyadSayac++; }
       else if(/Sigortalı İlk/.test(s)) cols.ilk=it.x; else if(s==='Ücret') cols.ucret=it.x; else if(s==='İkramiye') cols.ikramiye=it.x; else if(/Prim Öd/.test(s)) cols.prim=it.x;
     }));
+    // Döküm tek sayfaya sığdırılmışsa (yatay baskı) sağ bölüm başlıkları da bu sayfadadır;
+    // bulunursa aynı satırdan okunur, bulunmazsa sağ sayfa eşlemesi devreye girer.
+    const sagCols={};
+    sol.forEach(l=>l.items.forEach(it=>{
+      const s2=it.s;
+      if(/İşe Giriş/.test(s2)) sagCols.giris=it.x;
+      else if(/İşten Çıkış/.test(s2)) sagCols.cikis=it.x;
+      else if(/^Eksik( Gün)?$/.test(s2)) sagCols.eksik=it.x;
+      else if(/E\. ?Gün/.test(s2)) sagCols.neden=it.x;
+      else if(/İşten Çık\./.test(s2)) sagCols.cikisNeden=it.x;
+    }));
+    const tumCols = Object.keys(sagCols).length>=2 ? Object.assign({}, cols, sagCols) : cols;
     const satirlar = sol.filter(l=>l.items.some(it=>/^\d{11}$/.test(it.s)));
     satirlar.forEach(l=>{
       const r={y:l.y, sayfa:si};
       l.items.forEach(it=>{
-        const k=enYakin(it.x,cols);
-        if(k==='tc'){ if(/^\d{11}$/.test(it.s)) r.tc=it.s; else if(/^\d{12,}$/.test(it.s)) r.sicil=it.s; }
+        const k=enYakin(it.x,tumCols);
+        if(sagCols[k]!==undefined) r['r_'+k]=it.s;
+        else if(k==='tc'){ if(/^\d{11}$/.test(it.s)) r.tc=it.s; else if(/^\d{12,}$/.test(it.s)) r.sicil=it.s; }
         else if(k==='ad'||k==='soyad'||k==='ilk'){ r[k]=(r[k]?r[k]+' ':'')+it.s; }
         else if(k==='sicil'){ if(/^\d{11}$/.test(it.s) && !r.tc) r.tc=it.s; else r.sicil=it.s; }
         else r[k]=it.s;
@@ -3360,7 +3429,9 @@ function personelPdfAyristir(sayfalar){
       else if(s==='Eksik') cols.eksik=it.x; else if(/E\. ?Gün/.test(s)) cols.neden=it.x; else if(/İşten Çık\./.test(s)) cols.cikisNeden=it.x;
       if(/Eksik|Nedeni|Tar\./.test(s)) basY = Math.max(basY, l.y);
     }));
-    const veriSatirlari = sag.filter(l=>l.y<basY-5 && l.items.length && l.items.every(it=>/^\d{1,6}$/.test(it.s)));
+    // veri hücresi: sayı ya da tarih (14.08.2025 / 14/08 / 1408 gibi) — tarih sütunları dolu olabilir
+    const veriHucresi = t => /^\d{1,6}$/.test(t) || /^\d{1,2}[.\/-]\d{1,2}([.\/-]\d{2,4})?$/.test(t);
+    const veriSatirlari = sag.filter(l=>l.y<basY-5 && l.items.length && l.items.every(it=>veriHucresi(it.s)));
     const solKayitlar = kayitlar.filter(k=>k.sayfa===si);
     veriSatirlari.forEach((l,li)=>{
       let hedef = solKayitlar.find(k=>Math.abs(k.y-l.y)<=3);
@@ -3375,21 +3446,40 @@ function personelPdfAyristir(sayfalar){
     belge: k.belge||'13', kanun: k.kanun ? String(k.kanun).padStart(5,'0') : '00000',
     maas: sayiOku(k.ucret), ikramiye: sayiOku(k.ikramiye),
     primOdGun: parseInt(k.r_prim!==undefined?k.r_prim:k.prim)||0,
-    iseGiris: k.r_giris ? String(k.r_giris).padStart(4,'0') : '', istenCikis: k.r_cikis ? String(k.r_cikis).padStart(4,'0') : '',
+    iseGiris: k.r_giris ? ggaaOku(k.r_giris) : '', istenCikis: k.r_cikis ? ggaaOku(k.r_cikis) : '',
     eksikGun: parseInt(k.r_eksik)||0, eksikNeden: parseInt(k.r_neden)||0, cikisNeden: parseInt(k.r_cikisNeden)||0
   }));
 }
 
+async function ebildirgePdfAktar(f){
+  toast('PDF okunuyor…');
+  const sayfalar = await pdfSayfaSatirlari(f);
+  const gelen = personelPdfAyristir(sayfalar);
+  if(!gelen.length) throw new Error('PDF içinde sigortalı satırı bulunamadı. "E-Bildirge XML Dökümü Listesi" PDF\'ini seçtiğinizden emin olun (taranmış/görüntü PDF okunamaz — bu durumda aynı listenin Excel dökümünü kullanabilirsiniz).');
+  personelTopluUygula(gelen, `PDF: ${f.name}`, 'pdf');
+}
+
+async function ebildirgeExcelAktar(f){
+  if(typeof XLSX==='undefined') throw new Error('Excel kütüphanesi yüklenemedi.');
+  toast('Excel okunuyor…');
+  const sonuc = calismaKitabiAyristir(await f.arrayBuffer(), f.name);
+  if(!sonuc) throw new Error('Dosyada 11 haneli TC (SGNO) içeren satır bulunamadı. "E-Bildirge XML Dökümü Listesi" Excel dökümünü ya da personel şablonunu seçtiğinizden emin olun.');
+  const sayfaNot = sonuc.sayfa ? ' — sayfa: '+sonuc.sayfa : '';
+  personelTopluUygula(sonuc.gelen, 'Excel: '+f.name+sayfaNot+ebildirgeDonemUyarisi(sonuc.ustBilgi), 'excel');
+}
+
+// "PDF/Excel'den Aktar (Maaş)": dosya uzantısına göre PDF ya da Excel okuyucusuna yönlendirir
 async function pdfPersonelAktar(inp){
   const f = inp.files[0]; if(!f) return;
-  toast('PDF okunuyor…');
-  let sayfalar;
-  try { sayfalar = await pdfSayfaSatirlari(f); }
-  catch(e){ alert('PDF okunamadı: '+e.message); inp.value=''; return; }
-  const gelen = personelPdfAyristir(sayfalar);
+  const adi = String(f.name||'').toLocaleLowerCase('tr');
+  const pdfMi = /\.pdf$/.test(adi) || f.type==='application/pdf';
+  try{
+    if(pdfMi) await ebildirgePdfAktar(f);
+    else await ebildirgeExcelAktar(f);
+  }catch(e){
+    alert((pdfMi?'PDF':'Excel')+' okunamadı: '+((e && e.message) ? e.message : e));
+  }
   inp.value='';
-  if(!gelen.length){ alert('PDF içinde sigortalı satırı bulunamadı. "E-Bildirge XML Dökümü Listesi" PDF\'ini seçtiğinizden emin olun (taranmış PDF okunamaz).'); return; }
-  personelTopluUygula(gelen, `PDF: ${f.name}`, 'pdf');
 }
 
 
