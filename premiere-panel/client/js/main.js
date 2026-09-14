@@ -1,22 +1,47 @@
 /**
  * Panel mantigi.
  *
- * Iki akis var:
- *   A) Premiere akisi : analiz -> zaman cizgisine uygula -> master al -> paketle
- *   B) Hizli akis     : dosyayi dogrudan cekirdege ver, Premiere'e dokunma
+ * Ana arayuz sohbet: kullanici ne istedigini yazar, cekirdekteki ajan
+ * Premiere araclarini cagirir, panel bu araclari ExtendScript ile kosturur.
+ *
+ * Altta ayrica sohbetsiz, sabit adimli bir akis var (tek tusla).
  */
 (function () {
-  var cs = new CSInterface();
+  var host = GelistirHost.host;
+  var cs = GelistirHost.cs;
   var core = new GelistirCore();
   var node = window.GelistirNode;
+  var agent = null;
 
   var state = {
     hostReady: false,
     coreReady: false,
     source: "",
-    planJob: null, // { id, bundleDir, stateFile, keeps, cutPlan }
+    planJob: null,
     presetPath: localStorage.getItem("gelistir.preset") || "",
+    renderedLog: 0,
+    chatBusy: false,
     busy: false,
+  };
+
+  var TOOL_LABELS = {
+    premiere_get_project: "projeye bakiyor",
+    premiere_get_sequence: "zaman cizgisini okuyor",
+    premiere_get_primary_source: "kaynak dosyayi buluyor",
+    premiere_apply_keeps: "kesimleri yeni sequence'e diziyor",
+    premiere_set_clip_enabled: "klibi devre disi birakiyor",
+    premiere_delete_clip: "klip siliyor",
+    premiere_trim_clip: "klibi kirpiyor",
+    premiere_set_clip_gain: "ses kazancini ayarliyor",
+    premiere_add_markers: "marker koyuyor",
+    premiere_set_playhead: "oynatma kafasini tasiyor",
+    premiere_export_sequence: "Media Encoder'a gonderiyor",
+    media_probe: "dosyayi inceliyor",
+    media_transcribe: "konusmayi yaziya ceviriyor",
+    media_detect_silence: "sessizlikleri ariyor",
+    transcript_read: "dokumu okuyor",
+    build_cut_plan: "kesim planini kuruyor",
+    deliver_youtube_package: "yayina hazir paketi yaziyor",
   };
 
   // ------------------------------------------------------------ yardimcilar
@@ -25,15 +50,248 @@
     return document.getElementById(id);
   }
 
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
   function log(message, kind) {
     var box = $("log");
     var line = document.createElement("div");
     line.className = "log-line" + (kind ? " " + kind : "");
-    var time = new Date().toLocaleTimeString();
-    line.textContent = "[" + time + "] " + message;
+    line.textContent = "[" + new Date().toLocaleTimeString() + "] " + message;
     box.appendChild(line);
     box.scrollTop = box.scrollHeight;
   }
+
+  function mmss(seconds) {
+    var s = Math.max(0, Math.round(Number(seconds) || 0));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  function joinPath() {
+    var parts = Array.prototype.slice.call(arguments);
+    return node.path ? node.path.join.apply(node.path, parts) : parts.join("/");
+  }
+
+  function dirName(file) {
+    return node.path ? node.path.dirname(file) : String(file).replace(/[\\/][^\\/]*$/, "");
+  }
+
+  function baseName(file) {
+    return String(file).replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "");
+  }
+
+  // ------------------------------------------------------------ sohbet
+
+  function addMessage(role, html) {
+    var el = document.createElement("div");
+    el.className = "msg " + role;
+    el.innerHTML = html;
+    $("messages").appendChild(el);
+    $("messages").scrollTop = $("messages").scrollHeight;
+    return el;
+  }
+
+  /** Cekirdegin log'u dogrunun kaynagi; sadece yeni satirlari ekliyoruz. */
+  function renderSessionLog(view) {
+    var entries = view.log || [];
+    for (var i = state.renderedLog; i < entries.length; i++) {
+      var entry = entries[i];
+      if (entry.role === "user") {
+        addMessage("user", escapeHtml(entry.text));
+      } else if (entry.role === "assistant") {
+        addMessage("assistant", formatAssistant(entry.text));
+      } else if (entry.role === "tools") {
+        var names = (entry.calls || []).map(function (c) {
+          return TOOL_LABELS[c.name] || c.name;
+        });
+        addMessage("tool", "&#9881; " + escapeHtml(names.join(", ")));
+      } else if (entry.role === "progress") {
+        addMessage("progress", escapeHtml(entry.text));
+      }
+    }
+    state.renderedLog = entries.length;
+  }
+
+  /** Cok basit bicimlendirme: satir sonlari, `kod`, - liste. */
+  function formatAssistant(text) {
+    return escapeHtml(text)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\n/g, "<br />");
+  }
+
+  function setThinking(on) {
+    $("thinking").hidden = !on;
+    $("btn-send").disabled = on || !state.coreReady;
+    state.chatBusy = on;
+  }
+
+  function renderApproval(view) {
+    var box = $("approval");
+    if (!view.pendingApproval || !view.pendingApproval.length) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+
+    var html = "<h3>Onay gerekiyor</h3>";
+    view.pendingApproval.forEach(function (item) {
+      html +=
+        '<div class="approval-item">' +
+        "<div class=\"approval-name\">" + escapeHtml(TOOL_LABELS[item.name] || item.name) + "</div>" +
+        "<div class=\"approval-why\">" + escapeHtml(item.summary || "") + "</div>" +
+        "<pre>" + escapeHtml(JSON.stringify(item.input, null, 2)) + "</pre>" +
+        "</div>";
+    });
+    html +=
+      '<div class="approval-actions">' +
+      '<button id="btn-allow" class="primary">Izin ver</button>' +
+      '<button id="btn-deny" class="small">Reddet</button>' +
+      "</div>";
+
+    box.innerHTML = html;
+    box.hidden = false;
+
+    var decide = function (decision) {
+      var decisions = {};
+      view.pendingApproval.forEach(function (item) {
+        decisions[item.id] = decision;
+      });
+      box.hidden = true;
+      setThinking(true);
+      agent.approve(decisions).then(afterTurn, chatError);
+    };
+    $("btn-allow").addEventListener("click", function () {
+      decide("allow");
+    });
+    $("btn-deny").addEventListener("click", function () {
+      decide("deny");
+    });
+  }
+
+  function afterTurn(view) {
+    if (!view) {
+      setThinking(false);
+      return;
+    }
+    renderSessionLog(view);
+    renderApproval(view);
+    setThinking(view.status === "thinking" || view.status === "awaiting_tools");
+    if (view.status === "error" && view.error) {
+      addMessage("error", escapeHtml(view.error));
+      setThinking(false);
+    }
+    if (view.degraded) {
+      log("Beta ozellikleri kapali; sade istek modunda calisiliyor.", "warn");
+    }
+  }
+
+  function chatError(err) {
+    setThinking(false);
+    addMessage("error", escapeHtml(String(err.message || err)));
+    log(String(err.message || err), "error");
+  }
+
+  function sendChat(text) {
+    var message = String(text || $("input").value || "").trim();
+    if (!message || state.chatBusy) return;
+    $("input").value = "";
+    setThinking(true);
+
+    if (!agent) {
+      agent = new GelistirAgent(core, {
+        onUpdate: function (view) {
+          renderSessionLog(view);
+        },
+        onToolRun: function (call) {
+          log("Premiere: " + call.fn + "(" + call.args.join(", ") + ")");
+        },
+        onError: function (message) {
+          log(message, "error");
+        },
+      });
+    }
+
+    agent.send(message).then(afterTurn, chatError);
+  }
+
+  function newSession() {
+    agent = null;
+    state.renderedLog = 0;
+    $("messages").innerHTML = "";
+    $("approval").hidden = true;
+    addMessage("system", "Yeni oturum. Onceki konusma cekirdekte kaldi.");
+    setThinking(false);
+  }
+
+  // ------------------------------------------------------------ baglanti
+
+  function connectHost() {
+    if (!cs.isAvailable()) {
+      $("host-status").textContent = "Premiere: bagli degil (panel disinda)";
+      $("host-status").className = "status bad";
+      return Promise.resolve();
+    }
+    return host("gelistirPing").then(
+      function (info) {
+        state.hostReady = true;
+        $("host-status").textContent =
+          "Premiere " + (info.version || "") +
+          (info.project ? " - " + info.project : "") +
+          (info.activeSequence ? " / " + info.activeSequence : "");
+        $("host-status").className = "status ok";
+      },
+      function (err) {
+        state.hostReady = false;
+        $("host-status").textContent = "Premiere: " + err.message;
+        $("host-status").className = "status bad";
+      },
+    );
+  }
+
+  function chip(label, ok) {
+    var el = document.createElement("span");
+    el.className = "chip " + (ok ? "ok" : "bad");
+    el.textContent = label;
+    return el;
+  }
+
+  function connectCore() {
+    return core.health().then(
+      function (h) {
+        state.coreReady = true;
+        $("core-status").textContent = "Cekirdek bagli - " + h.model;
+        $("core-status").className = "status ok";
+        $("token-row").hidden = true;
+
+        $("chips").innerHTML = "";
+        [
+          chip("ffmpeg", h.ffmpeg),
+          chip("ffprobe", h.ffprobe),
+          chip(h.whisper ? "whisper" : "whisper yok", Boolean(h.whisper)),
+          chip(h.hasApiKey ? "API anahtari" : "API anahtari yok", h.hasApiKey),
+        ].forEach(function (c) {
+          $("chips").appendChild(c);
+        });
+
+        if (!h.ffmpeg) log("ffmpeg bulunamadi - kesim ve kodlama yapilamaz.", "error");
+        if (!h.whisper) log("whisper yok: dokum, altyazi ve bolumler uretilemez.", "warn");
+        if (!h.hasApiKey) {
+          log("ANTHROPIC_API_KEY yok: sohbet calismaz, tek tusla akis sadece sessizlik keser.", "warn");
+        }
+      },
+      function (err) {
+        state.coreReady = false;
+        $("core-status").textContent = err.message;
+        $("core-status").className = "status bad";
+        $("token-row").hidden = false;
+      },
+    );
+  }
+
+  // ------------------------------------------------------------ tek tusla akis
 
   function setStep(name, status, detail) {
     var el = $("step-" + name);
@@ -45,51 +303,19 @@
 
   function setBusy(busy) {
     state.busy = busy;
-    document.querySelectorAll("button.action").forEach(function (b) {
+    Array.prototype.forEach.call(document.querySelectorAll("button.action"), function (b) {
       b.disabled = busy;
     });
-    $("spinner").hidden = !busy;
-    refreshButtons();
+    if (!busy) refreshButtons();
   }
 
   function refreshButtons() {
+    $("btn-send").disabled = state.chatBusy || !state.coreReady;
     if (state.busy) return;
     $("btn-analyze").disabled = !(state.hostReady && state.coreReady);
     $("btn-apply").disabled = !(state.planJob && state.hostReady);
     $("btn-export").disabled = !(state.planJob && state.hostReady);
     $("btn-quick").disabled = !state.coreReady;
-  }
-
-  /** ExtendScript cagrisini Promise'e cevirir ve "OK|a=b" yanitini nesneye ayristirir. */
-  function host(fn, args) {
-    var quoted = (args || []).map(function (a) {
-      return '"' + String(a === null || a === undefined ? "" : a).replace(/["\\]/g, "\\$&") + '"';
-    });
-    var script = fn + "(" + quoted.join(", ") + ")";
-    return new Promise(function (resolve, reject) {
-      cs.evalScript(script, function (raw) {
-        var text = String(raw || "");
-        if (text === "EvalScript error." || text === "undefined" || text === "") {
-          reject(new Error(fn + " calistirilamadi. Panel Premiere icinde mi acik?"));
-          return;
-        }
-        var parts = text.split("|");
-        if (parts[0] === "ERR") {
-          reject(new Error(parts.slice(1).join("|") || "Bilinmeyen ExtendScript hatasi"));
-          return;
-        }
-        if (parts[0] !== "OK") {
-          reject(new Error("Beklenmeyen yanit: " + text.slice(0, 200)));
-          return;
-        }
-        var out = {};
-        for (var i = 1; i < parts.length; i++) {
-          var idx = parts[i].indexOf("=");
-          if (idx > 0) out[parts[i].slice(0, idx)] = parts[i].slice(idx + 1);
-        }
-        resolve(out);
-      });
-    });
   }
 
   function keepsToText(keeps) {
@@ -100,89 +326,6 @@
       .join(";");
   }
 
-  function mmss(seconds) {
-    var s = Math.max(0, Math.round(Number(seconds) || 0));
-    var m = Math.floor(s / 60);
-    return m + ":" + String(s % 60).padStart(2, "0");
-  }
-
-  function joinPath() {
-    var parts = Array.prototype.slice.call(arguments);
-    if (node.path) return node.path.join.apply(node.path, parts);
-    return parts.join("/");
-  }
-
-  function dirName(file) {
-    if (node.path) return node.path.dirname(file);
-    return String(file).replace(/[\\/][^\\/]*$/, "");
-  }
-
-  function baseName(file) {
-    var name = String(file).replace(/^.*[\\/]/, "");
-    return name.replace(/\.[^.]+$/, "");
-  }
-
-  // ------------------------------------------------------------ baglanti
-
-  function connectHost() {
-    if (!cs.isAvailable()) {
-      log("CEP koprusu yok - panel Premiere disinda aciliyor.", "warn");
-      $("host-status").textContent = "Premiere: bagli degil";
-      return Promise.resolve();
-    }
-    return host("gelistirPing")
-      .then(function (info) {
-        state.hostReady = true;
-        $("host-status").textContent =
-          "Premiere " + (info.version || "") + (info.project ? " - " + info.project : "");
-        $("host-status").className = "status ok";
-      })
-      .catch(function (err) {
-        state.hostReady = false;
-        $("host-status").textContent = "Premiere: " + err.message;
-        $("host-status").className = "status bad";
-      });
-  }
-
-  function connectCore() {
-    return core
-      .health()
-      .then(function (h) {
-        state.coreReady = true;
-        $("core-status").textContent = "Cekirdek bagli - " + h.model;
-        $("core-status").className = "status ok";
-
-        var chips = [];
-        chips.push(chip("ffmpeg", h.ffmpeg));
-        chips.push(chip("ffprobe", h.ffprobe));
-        chips.push(chip(h.whisper ? "whisper: " + h.whisper : "whisper yok", Boolean(h.whisper)));
-        chips.push(chip(h.hasApiKey ? "API anahtari var" : "API anahtari yok", h.hasApiKey));
-        $("chips").innerHTML = "";
-        chips.forEach(function (c) {
-          $("chips").appendChild(c);
-        });
-
-        if (!h.ffmpeg) log("ffmpeg bulunamadi - kesim ve kodlama yapilamaz.", "error");
-        if (!h.whisper) log("whisper yok: dokum, altyazi ve bolumler uretilemez.", "warn");
-        if (!h.hasApiKey) log("ANTHROPIC_API_KEY yok: sadece sessizlik kesimi yapilir.", "warn");
-      })
-      .catch(function (err) {
-        state.coreReady = false;
-        $("core-status").textContent = err.message;
-        $("core-status").className = "status bad";
-        $("token-row").hidden = false;
-      });
-  }
-
-  function chip(label, ok) {
-    var el = document.createElement("span");
-    el.className = "chip " + (ok ? "ok" : "bad");
-    el.textContent = label;
-    return el;
-  }
-
-  // ------------------------------------------------------------ akis A: analiz
-
   function analyze() {
     setBusy(true);
     setStep("analyze", "running", "kaynak bulunuyor");
@@ -190,15 +333,15 @@
       .then(function (info) {
         state.source = info.path;
         log("Kaynak: " + info.path);
-        var outDir = joinPath(dirName(info.path), baseName(info.path) + "-youtube");
-        return core.createJob({ input: info.path, outDir: outDir, mode: "plan" });
+        return core.createJob({
+          input: info.path,
+          outDir: joinPath(dirName(info.path), baseName(info.path) + "-youtube"),
+          mode: "plan",
+        });
       })
       .then(function (res) {
-        var id = res.job.id;
-        log("Plan isi basladi (#" + id + ")");
-        return core.follow(id, function (e) {
+        return core.follow(res.job.id, function (e) {
           setStep("analyze", "running", e.label + (e.detail ? ": " + e.detail : ""));
-          if (e.detail) log(e.label + ": " + e.detail);
         });
       })
       .then(function (job) {
@@ -208,17 +351,10 @@
           bundleDir: job.result.bundleDir,
           stateFile: joinPath(job.result.bundleDir, "job.json"),
           keeps: plan.keeps,
-          cutPlan: plan,
         };
         setStep("analyze", "done",
           mmss(plan.sourceDuration) + " -> " + mmss(plan.outputDuration) +
           " (" + Math.max(0, plan.keeps.length - 1) + " kesim)");
-        log(
-          "Plan hazir: " + plan.keeps.length + " parca, " +
-          plan.removedSeconds.toFixed(1) + " sn atiliyor (%" +
-          (plan.removedRatio * 100).toFixed(1) + ")",
-          "ok",
-        );
         (job.result.warnings || []).forEach(function (w) {
           log("Dikkat: " + w, "warn");
         });
@@ -236,49 +372,43 @@
   function renderPlan(result) {
     var box = $("plan");
     box.hidden = false;
-    var rows = (result.planResult && result.planResult.removals) || [];
     var byKind = {};
-    rows.forEach(function (r) {
+    ((result.planResult && result.planResult.removals) || []).forEach(function (r) {
       byKind[r.kind] = (byKind[r.kind] || 0) + (r.end - r.start);
     });
     var labels = {
-      silence: "Sessizlik",
-      deadair: "Olu hava",
-      filler: "Dolgu sozcugu",
-      retake: "Tekrar cekim",
-      offtopic: "Konu disi",
-      error: "Hatali bilgi",
+      silence: "Sessizlik", deadair: "Olu hava", filler: "Dolgu sozcugu",
+      retake: "Tekrar cekim", offtopic: "Konu disi", error: "Hatali bilgi",
     };
     var html = "<h3>Kesim ozeti</h3><ul>";
-    Object.keys(byKind).forEach(function (kind) {
+    var kinds = Object.keys(byKind);
+    if (!kinds.length) html += "<li>Sadece sessizlik kesimi</li>";
+    kinds.forEach(function (kind) {
       html += "<li>" + (labels[kind] || kind) + ": " + byKind[kind].toFixed(1) + " sn</li>";
     });
-    if (!Object.keys(byKind).length) html += "<li>Sadece sessizlik kesimi</li>";
     html += "</ul>";
-
-    var chapters = result.chapters || [];
-    if (chapters.length) {
+    if ((result.chapters || []).length) {
       html += "<h3>Bolumler</h3><ul>";
-      chapters.forEach(function (c) {
-        html += "<li>" + mmss(c.time) + " " + c.title + "</li>";
+      result.chapters.forEach(function (c) {
+        html += "<li>" + mmss(c.time) + " " + escapeHtml(c.title) + "</li>";
       });
       html += "</ul>";
     }
     box.innerHTML = html;
   }
 
-  // ------------------------------------------------------------ akis A: uygula
-
   function applyCutPlan() {
     if (!state.planJob) return;
     setBusy(true);
     setStep("apply", "running", "zaman cizgisi kuruluyor");
-    var name = "Gelistir - " + baseName(state.source);
-    host("gelistirApplyCutPlan", [keepsToText(state.planJob.keeps), state.source, name])
+    host("gelistirApplyKeeps", [
+      keepsToText(state.planJob.keeps),
+      state.source,
+      "Gelistir - " + baseName(state.source),
+    ])
       .then(function (info) {
         setStep("apply", "done", info.placed + " parca, " + mmss(info.duration));
-        log("Yeni sequence: " + info.sequence + " (" + info.placed + " parca)", "ok");
-        log("Orijinal sequence'e dokunulmadi; istedigin gibi elle duzeltebilirsin.");
+        log("Yeni sequence: " + info.sequence + " (orijinale dokunulmadi)", "ok");
       })
       .catch(function (err) {
         setStep("apply", "error", err.message);
@@ -288,8 +418,6 @@
         setBusy(false);
       });
   }
-
-  // ------------------------------------------------------------ akis A: master + paket
 
   function choosePreset() {
     if (!window.cep || !window.cep.fs) {
@@ -301,7 +429,6 @@
       state.presetPath = result.data[0];
       localStorage.setItem("gelistir.preset", state.presetPath);
       $("preset-label").textContent = state.presetPath;
-      log("Preset: " + state.presetPath);
     }
   }
 
@@ -309,9 +436,9 @@
   function waitForFile(file, timeoutMs) {
     var fs = node.fs;
     if (!fs) return Promise.reject(new Error("Dosya izleme icin node erisimi gerekli"));
-    var deadline = Date.now() + (timeoutMs || 1000 * 60 * 60);
+    var deadline = Date.now() + (timeoutMs || 3600000);
     var lastSize = -1;
-    var stableCount = 0;
+    var stable = 0;
     return new Promise(function (resolve, reject) {
       var timer = setInterval(function () {
         if (Date.now() > deadline) {
@@ -327,15 +454,12 @@
           return;
         }
         if (size > 0 && size === lastSize) {
-          stableCount++;
-          if (stableCount >= 3) {
+          if (++stable >= 3) {
             clearInterval(timer);
             resolve(size);
             return;
           }
-        } else {
-          stableCount = 0;
-        }
+        } else stable = 0;
         lastSize = size;
         setStep("master", "running", (size / 1048576).toFixed(1) + " MB");
       }, 2000);
@@ -353,8 +477,7 @@
     setStep("master", "running", "Media Encoder'a gonderiliyor");
 
     host("gelistirExportSequence", [masterPath, state.presetPath])
-      .then(function (info) {
-        log("Media Encoder kuyruga alindi: " + info.output);
+      .then(function () {
         return waitForFile(masterPath);
       })
       .then(function (size) {
@@ -374,7 +497,6 @@
       })
       .then(function (job) {
         setStep("bundle", "done", job.result.bundleDir);
-        log("Paket hazir: " + job.result.bundleDir, "ok");
         renderBundle(job.result);
       })
       .catch(function (err) {
@@ -386,40 +508,33 @@
       });
   }
 
-  // ------------------------------------------------------------ akis B: hizli
-
   function quickRun() {
     setBusy(true);
-    var pick = Promise.resolve(state.source);
-    if (!state.source && window.cep && window.cep.fs) {
-      var result = window.cep.fs.showOpenDialog(false, false, "Video sec", "", [
+    var file = state.source;
+    if (window.cep && window.cep.fs) {
+      var picked = window.cep.fs.showOpenDialog(false, false, "Video sec", "", [
         "mp4", "mov", "mxf", "mkv", "avi",
       ]);
-      pick = Promise.resolve(result && result.data && result.data[0]);
-    } else if (!state.source) {
-      pick = host("gelistirPrimarySource").then(function (i) {
-        return i.path;
-      });
+      if (picked && picked.data && picked.data[0]) file = picked.data[0];
     }
 
-    pick
-      .then(function (file) {
-        if (!file) throw new Error("Dosya secilmedi");
-        state.source = file;
-        log("Hizli akis: " + file);
-        var outDir = joinPath(dirName(file), baseName(file) + "-youtube");
-        return core.createJob({ input: file, outDir: outDir, mode: "full" });
+    Promise.resolve(file)
+      .then(function (chosen) {
+        if (!chosen) throw new Error("Dosya secilmedi");
+        state.source = chosen;
+        return core.createJob({
+          input: chosen,
+          outDir: joinPath(dirName(chosen), baseName(chosen) + "-youtube"),
+          mode: "full",
+        });
       })
       .then(function (res) {
-        setStep("quick", "running", "basladi");
         return core.follow(res.job.id, function (e) {
           setStep("quick", "running", e.label + (e.detail ? ": " + e.detail : ""));
-          if (e.step === "cut" && e.detail) log(e.detail);
         });
       })
       .then(function (job) {
         setStep("quick", "done", job.result.bundleDir);
-        log("Paket hazir: " + job.result.bundleDir, "ok");
         renderBundle(job.result);
       })
       .catch(function (err) {
@@ -450,15 +565,9 @@
       html += "</ul>";
     }
     html +=
-      "<p class='hint'>Chrome eklentisi bu isin metadata'sini YouTube Studio'ya " +
-      "doldurabilir. Yayinlama dugmesine kendin basmalisin.</p>";
+      "<p class='hint'>Yayinlama dugmesine bu panel basmaz. Chrome eklentisi " +
+      "metinleri YouTube Studio'ya doldurabilir.</p>";
     box.innerHTML = html;
-  }
-
-  function escapeHtml(text) {
-    return String(text).replace(/[&<>"]/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
-    });
   }
 
   // ------------------------------------------------------------ baslangic
@@ -468,11 +577,29 @@
     if (bg) document.body.style.background = bg;
     if (state.presetPath) $("preset-label").textContent = state.presetPath;
 
+    $("btn-send").addEventListener("click", function () {
+      sendChat();
+    });
+    $("input").addEventListener("keydown", function (e) {
+      // Enter gonderir, Shift+Enter satir atlar.
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendChat();
+      }
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".suggest"), function (b) {
+      b.addEventListener("click", function () {
+        sendChat(b.textContent);
+      });
+    });
+    $("btn-new").addEventListener("click", newSession);
+
     $("btn-analyze").addEventListener("click", analyze);
     $("btn-apply").addEventListener("click", applyCutPlan);
     $("btn-export").addEventListener("click", exportAndBundle);
     $("btn-quick").addEventListener("click", quickRun);
     $("btn-preset").addEventListener("click", choosePreset);
+
     $("btn-reconnect").addEventListener("click", function () {
       connectHost().then(connectCore).then(refreshButtons);
     });

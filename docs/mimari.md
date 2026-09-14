@@ -56,12 +56,74 @@ hem de yerel Node sureciyle konusabiliyor.
 | `youtube.js` | YouTube kurallari: bolum, baslik, etiket, aciklama, SRT | **evet** |
 | `ffmpeg.js` | arguman kurma + cikti ayristirma (saf), surec baslatma (degil) | kismen |
 | `transcribe.js` | whisper bulma ve cikti bicimlerini normalize etme | kismen |
-| `claude.js` | iki istem: kurgu karari ve YouTube metinleri | hayir |
+| `claude.js` | iki istem: kurgu karari ve YouTube metinleri (tek tusla akis) | hayir |
+| `agent.js` | arac tanimlari, ajan dongusu, onay kapisi, cekirdek araclari | hayir |
 | `pipeline.js` | 10 adimi sirala, paketi yaz | hayir |
-| `server.js` | yerel HTTP, token, is kuyrugu | hayir |
+| `server.js` | yerel HTTP, token, is kuyrugu, ajan oturumlari | hayir |
 
 Saf olan dosyalar testlerin agirligini tasiyor. Mantik oraya toplandi ki
 ffmpeg ve Premiere olmadan da dogrulanabilsin.
+
+---
+
+## Ajan dongusu
+
+Sohbet modunda model surucu koltugunda. Ama araclar iki ayri yerde kosuyor:
+cekirdek kendi araclarini hemen kosturur, Premiere araclarini panele dondurur.
+
+```
+kullanici mesaji
+      │
+      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ core/src/agent.js  drive()                                      │
+│                                                                 │
+│  1. modeli cagir (araclar + sistem istemi, onbellekli)          │
+│  2. stop_reason "tool_use" degilse -> dur, yaniti gosterme       │
+│  3. arac cagrilarini ayir:                                      │
+│       onay gerekiyor ve karar yok -> awaiting_approval, DUR      │
+│       onay reddedildi            -> is_error sonucu uret        │
+│       executor "core"            -> BURADA kostur               │
+│       executor "host"            -> panele dondur, DUR          │
+│  4. tum sonuclar hazir -> TEK user mesajinda gonder, 1'e don     │
+└─────────────────────────────────────────────────────────────────┘
+      │                            ▲
+      │ awaiting_tools             │ POST /agent/sessions/:id/tool-results
+      ▼                            │
+┌─────────────────────────────────────────────────────────────────┐
+│ premiere-panel  client/js/agent.js                              │
+│   pendingHost[] -> her biri icin evalScript(fn, args)           │
+│   ham JSON metnini toplayip cekirdege geri gonder               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Onemli ayrintilar:
+
+- **Bir asistan mesajinin tum `tool_result` bloklari tek bir user mesajinda
+  gider.** Bolerek gondermek modeli paralel arac cagirmaktan vazgecirir.
+- **Panel turu cagri butcesini sifirlamaz.** Butce (`maxModelCalls`, 64)
+  kullanicinin mesaji basina. Yoksa "host araci -> sonuc -> host araci"
+  dongusu hic bitmez.
+- **HTTP istegi beklenmez.** Bir tur dakikalar surebilir (whisper, kodlama,
+  model dusunme suresi), bu yuzden `POST .../message` hemen doner ve panel
+  `GET /agent/sessions/:id` ile durumu yoklar.
+- **Plan modele dokulmez.** `build_cut_plan` keeps listesini oturumda tutar,
+  modele sadece `planId` verir. `premiere_apply_keeps` o planId ile
+  cagrildiginda `hostArgs` keeps metnini oturumdan alir.
+
+### Panel ile ExtendScript arasindaki sozlesme
+
+`host/gelistir.jsx` her fonksiyondan JSON metni donduruyor:
+`{"ok":true,...}` veya `{"ok":false,"error":"..."}`.
+
+ExtendScript'te `JSON` nesnesi her Premiere surumunde yok, bu yuzden jsx'in
+kendi stringifier'i var (`gsJson`). **Ayristirma tarafi bilerek yok:** girdiler
+duz konumsal arguman olarak geciyor. Model uretimi bir metni jsx icinde
+`eval` etmek, Premiere'in icinde kod calistirmak demek olurdu.
+
+Ayni sebeple jsx ES3 uyumlu kalmak zorunda (let/const/arrow/sablon literal
+yok). `core/test/bridge.test.js` bunu ve fonksiyon adlari/arguman sayilarinin
+uyustugunu dogruluyor - Premiere olmadan kurabilecegimiz en yakin guvence bu.
 
 ---
 

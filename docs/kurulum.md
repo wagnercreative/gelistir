@@ -146,6 +146,13 @@ Ekrana port ve token yazilir. Sonra Premiere'de:
 Panel acildiginda ust kisimda iki yesil satir gormelisin: Premiere baglantisi ve
 cekirdek baglantisi. Token'i panel `~/.gelistir/token` dosyasindan kendi okur.
 
+Artik sohbet kutusuna yazabilirsin. Ilk denemede kucuk bir seyle basla:
+
+> Sequence'te ne var, bir bak
+
+Ajan zaman cizgisini okuyup sana anlatir. Ne diyebilecegin ve araclarin
+tam listesi: [ajan.md](ajan.md)
+
 ### d) Export preset (.epr)
 
 Premiere akisinda master dosyayi Media Encoder aliyor ve bunun icin bir preset
@@ -210,6 +217,14 @@ kopyalanmamis. Klasorun tamamini kopyaladigindan emin ol.
 **Media Encoder baslamiyor**
 Adobe Media Encoder kurulu olmali ve Premiere ile ayni surum olmali. Panel
 kuyruga gonderir; kodlamayi Media Encoder yapar.
+
+**Sohbet "ANTHROPIC_API_KEY gerekli" diyor**
+Anahtari ayarlayip `gelistir serve`i yeniden baslat. Anahtar sunucu
+baslarken okunuyor; sonradan export etmek yetmez.
+
+**Sohbet "Oturum mesgul" diyor**
+Onceki tur bitmemis. "dusunuyor" yazisi kaybolana kadar bekle, ya da
+**Yeni oturum**a bas.
 
 **Kesimler cok agresif**
 ```bash

@@ -178,7 +178,11 @@ function groupByKind(removals) {
  * @param {string} params.input        kaynak medya (full/plan) veya master (deliver)
  * @param {string} params.outDir       paketin yazilacagi dizin
  * @param {object} params.config       loadConfig() cikisi
- * @param {"full"|"plan"|"deliver"} params.mode
+ * @param {"full"|"plan"|"deliver"|"deliver-source"} params.mode
+ *   full           kaynak dosyadan bastan sona
+ *   plan           sadece dokum + kesim plani (panel zaman cizgisini kurar)
+ *   deliver        Premiere/AME master'i (zaten kesilmis) paketle
+ *   deliver-source kaynak dosyayi verilen plana gore kes ve paketle
  * @param {string} [params.srtPath]    hazir dokum (whisper yoksa)
  * @param {object} [params.state]      deliver modunda plan asamasindan gelen job.json
  * @param {function} [params.onEvent]  ({step, label, detail, progress}) => void
@@ -193,6 +197,7 @@ export async function runPipeline({
   apiKey = "",
   onEvent = () => {},
   onChild = null,
+  metadataOverride = null,
 }) {
   const started = Date.now();
   const id = randomUUID().slice(0, 8);
@@ -204,10 +209,15 @@ export async function runPipeline({
   // Her ffmpeg/whisper cagrisi ayni onChild'i alir; sunucu iptalde bunlari oldurur.
   const runOpts = (extra = {}) => (onChild ? { ...extra, onChild } : extra);
 
+  // deliver ve deliver-source agir adimlari atlar; ikisi arasindaki fark,
+  // girdinin zaten kesilmis olup olmadigi.
+  const deliverOnly = mode === "deliver" || mode === "deliver-source";
+  const inputAlreadyCut = mode === "deliver";
+
   const steps =
     mode === "plan"
       ? ["probe", "audio", "transcribe", "silence", "plan", "cut"]
-      : mode === "deliver"
+      : deliverOnly
         ? ["probe", "subtitles", "master", "metadata", "bundle"]
         : Object.keys(STEP_LABELS);
   const stepIndex = (s) => steps.indexOf(s) / steps.length;
@@ -228,7 +238,7 @@ export async function runPipeline({
   const client = () => createClient(apiKey);
   const hasApiKey = Boolean(apiKey || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 
-  if (mode !== "deliver") {
+  if (!deliverOnly) {
     // ---------------------------------------------------------- 2. ses
     emit("audio", "", stepIndex("audio"));
     const wavPath = path.join(workDir, `${base}-16k.wav`);
@@ -340,10 +350,12 @@ export async function runPipeline({
     };
   }
 
-  // deliver modunda master zaten kesilmis: tek parca.
-  const deliveryKeeps =
-    mode === "deliver" ? [{ start: 0, end: probeInfo.duration }] : cutPlan.keeps;
-  if (mode === "deliver" && cutPlan) {
+  // deliver modunda master zaten kesilmis: tek parca. deliver-source'ta ise
+  // kaynak dosya plana gore burada kesilir.
+  const deliveryKeeps = inputAlreadyCut
+    ? [{ start: 0, end: probeInfo.duration }]
+    : cutPlan?.keeps || [{ start: 0, end: probeInfo.duration }];
+  if (inputAlreadyCut && cutPlan) {
     // Master'in suresi plandaki cikti suresiyle uyusmuyorsa altyazi kayar.
     const drift = Math.abs(probeInfo.duration - cutPlan.outputDuration);
     if (drift > 1.0) {
@@ -364,8 +376,9 @@ export async function runPipeline({
       removedSeconds: 0,
       removedRatio: 0,
     };
-  const outputDuration =
-    mode === "deliver" ? probeInfo.duration : effectiveCutPlan.outputDuration;
+  const outputDuration = inputAlreadyCut
+    ? probeInfo.duration
+    : effectiveCutPlan.outputDuration;
 
   // ------------------------------------------------------------ 7. altyazi
   const files = {};
@@ -421,9 +434,12 @@ export async function runPipeline({
   files.video = videoOut;
 
   // ------------------------------------------------------------ 9. metadata
+  const overrideChapters = metadataOverride?.chapters?.length
+    ? metadataOverride.chapters
+    : null;
   const normalizedChapters = config.chapters
     ? yt.normalizeChapters(
-        (chapters || []).map((c) => ({
+        (overrideChapters || chapters || []).map((c) => ({
           // Bolum zamanlari kaynak cizgisinde geldi; cikti cizgisine tasi.
           time: remapTime(c.time, effectiveCutPlan.keeps),
           title: c.title,
@@ -433,9 +449,12 @@ export async function runPipeline({
       )
     : [];
 
-  let metadata = null;
+  let metadata = metadataOverride;
   emit("metadata", "", stepIndex("metadata"));
-  if (!transcript.segments.length) {
+  if (metadataOverride) {
+    // Metinler cagiran tarafca (ajan) verildi; yeniden uretmiyoruz.
+    emit("metadata", "cagirandan geldi");
+  } else if (!transcript.segments.length) {
     emit("metadata", "dokum yok - atlandi");
   } else if (!hasApiKey) {
     emit("metadata", "API anahtari yok - atlandi");
@@ -514,7 +533,9 @@ export async function runPipeline({
   }
 
   const removalsByKind = groupByKind(
-    mode === "deliver" ? [] : [...(planResult?.removals || []), ...(effectiveCutPlan.removed || [])],
+    inputAlreadyCut
+      ? []
+      : [...(planResult?.removals || []), ...(effectiveCutPlan.removed || [])],
   );
   const reportPath = path.join(bundleDir, "rapor.md");
   fs.writeFileSync(

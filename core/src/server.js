@@ -12,6 +12,7 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 
 import { loadConfig, saveConfig, sanitize, DEFAULTS } from "./config.js";
+import * as agent from "./agent.js";
 import { runPipeline, STEP_LABELS } from "./pipeline.js";
 import { detectWhisper } from "./transcribe.js";
 import { run } from "./ffmpeg.js";
@@ -120,7 +121,37 @@ class JobRegistry {
 export async function createServer({ config = loadConfig(), logger = console } = {}) {
   const token = ensureToken();
   const registry = new JobRegistry();
+  const sessions = new Map();
   let liveConfig = config;
+
+  function getSession(id) {
+    const session = sessions.get(id);
+    if (!session) throw httpError(404, "Ajan oturumu bulunamadi");
+    return session;
+  }
+
+  /**
+   * Ajan turlarini arka planda kosar.
+   *
+   * Bir tur dakikalar surebilir (whisper, ffmpeg, model dusunme suresi), bu
+   * yuzden HTTP istegini bekletmiyoruz: istek hemen doner, panel durumu
+   * GET /agent/sessions/:id ile yoklar.
+   */
+  function runInBackground(session, fn) {
+    if (session.running) throw httpError(409, "Oturum mesgul; tur bitene kadar bekle");
+    session.running = true;
+    session.status = "thinking";
+    Promise.resolve()
+      .then(fn)
+      .catch((err) => {
+        session.status = "error";
+        session.error = String(err?.message || err);
+        logger.error?.(`[ajan ${session.id}] ${session.error}`);
+      })
+      .finally(() => {
+        session.running = false;
+      });
+  }
 
   async function startJob(job) {
     job.status = "running";
@@ -203,14 +234,16 @@ export async function createServer({ config = loadConfig(), logger = console } =
       const input = String(body.input || "");
       if (!input) throw httpError(400, "input zorunlu");
       if (!fs.existsSync(input)) throw httpError(400, `Dosya bulunamadi: ${input}`);
-      const mode = ["full", "plan", "deliver"].includes(body.mode) ? body.mode : "full";
+      const mode = ["full", "plan", "deliver", "deliver-source"].includes(body.mode)
+        ? body.mode
+        : "full";
 
       let state = body.state || null;
       if (!state && body.stateFile && fs.existsSync(body.stateFile)) {
         state = JSON.parse(fs.readFileSync(body.stateFile, "utf8"));
       }
-      if (mode === "deliver" && !state) {
-        throw httpError(400, "deliver modu icin plan asamasindan gelen state/stateFile gerekli");
+      if ((mode === "deliver" || mode === "deliver-source") && !state) {
+        throw httpError(400, `${mode} modu icin plan asamasindan gelen state/stateFile gerekli`);
       }
 
       const outDir = String(
@@ -276,6 +309,64 @@ export async function createServer({ config = loadConfig(), logger = console } =
         }
       }
       throw httpError(404, "Tamamlanmis is yok");
+    },
+
+    // ---------------------------------------------------------- ajan modu
+
+    "POST /agent/sessions": async (req) => {
+      const body = await readBody(req);
+      let session;
+      try {
+        session = agent.createSession({
+          config: { ...liveConfig, ...sanitize(body.overrides || {}) },
+          apiKey: body.apiKey ? String(body.apiKey) : "",
+        });
+      } catch (err) {
+        // Anahtar eksikligi sunucu hatasi degil, yapilandirma hatasi.
+        throw httpError(400, err.message);
+      }
+      sessions.set(session.id, session);
+      return { session: agent.sessionView(session), tools: agent.apiTools().map((t) => t.name) };
+    },
+
+    "GET /agent/sessions": async () => ({
+      sessions: [...sessions.values()].map((s) => ({
+        id: s.id,
+        status: s.status,
+        createdAt: s.createdAt,
+        messageCount: s.messages.length,
+      })),
+    }),
+
+    "GET /agent/sessions/:id": async (req, params) => ({
+      session: agent.sessionView(getSession(params.id)),
+    }),
+
+    "POST /agent/sessions/:id/message": async (req, params) => {
+      const session = getSession(params.id);
+      const body = await readBody(req);
+      const text = String(body.text || "").trim();
+      if (!text) throw httpError(400, "text zorunlu");
+      runInBackground(session, () => agent.sendMessage(session, text));
+      return { session: agent.sessionView(session) };
+    },
+
+    "POST /agent/sessions/:id/tool-results": async (req, params) => {
+      const session = getSession(params.id);
+      const body = await readBody(req, 4_000_000);
+      if (!Array.isArray(body.results)) throw httpError(400, "results dizisi zorunlu");
+      runInBackground(session, () => agent.submitToolResults(session, body.results));
+      return { session: agent.sessionView(session) };
+    },
+
+    "POST /agent/sessions/:id/approve": async (req, params) => {
+      const session = getSession(params.id);
+      const body = await readBody(req);
+      if (!body.decisions || typeof body.decisions !== "object") {
+        throw httpError(400, "decisions nesnesi zorunlu");
+      }
+      runInBackground(session, () => agent.resolveApprovals(session, body.decisions));
+      return { session: agent.sessionView(session) };
     },
 
     "GET /jobs/:id/metadata": async (req, params) => {
@@ -358,7 +449,7 @@ export async function createServer({ config = loadConfig(), logger = console } =
     }
   });
 
-  return { server, token, registry, config: () => liveConfig };
+  return { server, token, registry, sessions, config: () => liveConfig };
 }
 
 export async function serve({ config = loadConfig(), logger = console } = {}) {

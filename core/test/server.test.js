@@ -181,3 +181,111 @@ test("OPTIONS on istegi 204 doner", async () => {
     assert.equal(res.headers.get("access-control-allow-methods"), "GET, POST, OPTIONS");
   });
 });
+
+// ---------------------------------------------------------------- ajan modu
+
+test("ajan oturumu ortam degiskeni olmadan da acilir (ant auth profili olabilir)", async () => {
+  // Kimlik bilgisi `ant auth login` profilinden de gelebilir; oturum acilisinda
+  // anahtar zorunlu tutulmaz. Eksiklik ilk model isteginde anlasilir mesajla cikar.
+  const saved = process.env.ANTHROPIC_API_KEY;
+  const savedToken = process.env.ANTHROPIC_AUTH_TOKEN;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_AUTH_TOKEN;
+  try {
+    await withServer(async ({ base, token }) => {
+      const res = await fetch(`${base}/agent/sessions`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: "{}",
+      });
+      assert.equal(res.status, 200);
+      assert.equal((await res.json()).session.status, "idle");
+    });
+  } finally {
+    if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved;
+    if (savedToken !== undefined) process.env.ANTHROPIC_AUTH_TOKEN = savedToken;
+  }
+});
+
+test("ajan oturumu acilir, listelenir ve okunur", async () => {
+  await withServer(async ({ base, token }) => {
+    const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+    const created = await fetch(`${base}/agent/sessions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ apiKey: "sk-ant-test-anahtari" }),
+    });
+    assert.equal(created.status, 200);
+    const { session, tools } = await created.json();
+    assert.ok(session.id);
+    assert.equal(session.status, "idle");
+    assert.ok(tools.includes("premiere_get_sequence"));
+    assert.ok(tools.includes("build_cut_plan"));
+    // Sirlar gorunumde olmamali
+    assert.equal(session.apiKey, undefined);
+    assert.equal(session.client, undefined);
+
+    const list = await (await fetch(`${base}/agent/sessions`, { headers })).json();
+    assert.equal(list.sessions.length, 1);
+
+    const read = await fetch(`${base}/agent/sessions/${session.id}`, { headers });
+    assert.equal(read.status, 200);
+    assert.equal((await read.json()).session.id, session.id);
+  });
+});
+
+test("olmayan ajan oturumu 404, bozuk govde 400 doner", async () => {
+  await withServer(async ({ base, token }) => {
+    const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+
+    const missing = await fetch(`${base}/agent/sessions/yok/message`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ text: "selam" }),
+    });
+    assert.equal(missing.status, 404);
+
+    const created = await (
+      await fetch(`${base}/agent/sessions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ apiKey: "sk-ant-test-anahtari" }),
+      })
+    ).json();
+
+    const empty = await fetch(`${base}/agent/sessions/${created.session.id}/message`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ text: "   " }),
+    });
+    assert.equal(empty.status, 400);
+
+    const badResults = await fetch(`${base}/agent/sessions/${created.session.id}/tool-results`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ results: "dizi degil" }),
+    });
+    assert.equal(badResults.status, 400);
+
+    const badApprove = await fetch(`${base}/agent/sessions/${created.session.id}/approve`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({}),
+    });
+    assert.equal(badApprove.status, 400);
+  });
+});
+
+test("ajan uc noktalari token ister", async () => {
+  await withServer(async ({ base }) => {
+    for (const [method, url] of [
+      ["POST", "/agent/sessions"],
+      ["GET", "/agent/sessions"],
+      ["GET", "/agent/sessions/x"],
+      ["POST", "/agent/sessions/x/message"],
+    ]) {
+      const res = await fetch(base + url, { method });
+      assert.equal(res.status, 401, `${method} ${url}`);
+    }
+  });
+});

@@ -1,29 +1,44 @@
 # Gelistir
 
-Premiere Pro icinde Claude ile kurgu yapip videoyu **YouTube'a yuklenmeye hazir**
-halde cikaran uc parcali bir sistem.
+Premiere Pro icinde **sohbet ederek** kurgu yapmani saglayan bir eklenti.
+Ne istedigini yazarsin; ajan zaman cizgisine bakar, dokumu okur, kesimi yapar
+ve videoyu YouTube'a yuklenmeye hazir hale getirir.
+
+```
+Sen:   Sessizlikleri ve dolgu sozcuklerini kes
+Ajan:  ⚙ zaman cizgisini okuyor
+Ajan:  ⚙ konusmayi yaziya ceviriyor
+Ajan:  41 yerde kesim buldum: 2:14 sessizlik, 38 sn dolgu sozcugu, iki
+       tekrar cekim. 12:03 -> 9:31 (%21 kisaliyor). Uygulayayim mi?
+Sen:   uygula
+Ajan:  "Gelistir - cekim" adiyla yeni bir sequence kurdum, 42 parca.
+       Orijinal sequence'e dokunmadim.
+```
+
+Yikici bir sey yapmadan once izin ister. Kesim onerileri koddaki guvenlik
+kurallarindan gecer. Yayinlama dugmesine basmaz.
+
+**Ajan modunun tamami: [docs/ajan.md](docs/ajan.md)**
 
 ---
 
-## Kisa cevap: Chrome eklentisi Premiere'i kontrol edemez
+## Neden Premiere eklentisi, Chrome eklentisi degil
 
-Claude'un Chrome eklentisi **tarayici sekmeleri** uzerinde calisir: sayfayi okur,
-tiklar, form doldurur. Premiere Pro ise masaustu uygulamasi ve tarayicinin
-kum havuzunun tamamen disinda. Yani bir Chrome eklentisi Premiere'in zaman
-cizgisini goremez, klip kesemez, export baslatamaz. Bu bir izin ayari degil,
-mimari bir sinir.
+Claude'un Chrome eklentisi **tarayici sekmeleri** uzerinde calisir. Premiere
+Pro masaustu uygulamasi ve tarayicinin kum havuzunun tamamen disinda; bir
+Chrome eklentisi Premiere'in zaman cizgisini goremez, klip kesemez, export
+baslatamaz. Bu bir izin ayari degil, mimari bir sinir.
 
-Premiere'in **kendi** eklenti sistemi var ve istedigin sey oradan yapilir:
+Ama **ayni deneyim** Premiere'in kendi eklenti sistemiyle kurulabiliyor:
 
 | Eklenti turu | Ne yapar | Bu projede |
 |---|---|---|
-| **CEP paneli** | Premiere icinde acilan bir web paneli (HTML/JS) + ExtendScript ile projeye tam erisim | `premiere-panel/` - kullandigimiz yol |
+| **CEP paneli** | Premiere icinde acilan web paneli (HTML/JS) + ExtendScript ile projeye tam erisim | `premiere-panel/` - kullandigimiz yol |
 | UXP paneli | CEP'in yeni nesli; Premiere'de API yuzeyi henuz daha sinirli | ileride gecis |
 | Chrome eklentisi | Sadece tarayici. Premiere'e erisemez | `chrome-extension/` - yalniz YouTube Studio tarafi |
 
-Dolayisiyla "Claude Chrome eklentisi gibi bir sey" sorusunun cevabi: **evet,
-mumkun - ama Chrome eklentisi olarak degil, Premiere paneli olarak.** Bu repo
-onu kuruyor.
+Yani panel, Chrome eklentisinin tarayicida yaptigi seyi Premiere'de yapiyor:
+sohbet + arac cagirma + onay isteme.
 
 ---
 
@@ -41,10 +56,11 @@ onu kuruyor.
   eklentisi  HTTP   └─────────────────────────────────────────┘
 ```
 
-- **`core/`** - isi yapan cekirdek. Tek basina da calisir: `gelistir run video.mp4`
-  Premiere olmadan yayina hazir paket uretir.
-- **`premiere-panel/`** - Premiere icindeki panel. Kesimleri gercek zaman
-  cizgisine uygular; boylece kurguyu elle duzeltebilirsin.
+- **`core/`** - isi yapan cekirdek. Ajan dongusunu (model <-> arac) surduren
+  taraf da burada. Tek basina da calisir: `gelistir run video.mp4` Premiere
+  olmadan yayina hazir paket uretir.
+- **`premiere-panel/`** - Premiere icindeki panel. Sohbet arayuzu ve
+  ExtendScript tarafi; ajanin Premiere araclarini bu panel calistirir.
 - **`chrome-extension/`** - uretilen baslik/aciklama/bolum/etiketleri YouTube
   Studio formuna doldurur. **Yayinla dugmesine basmaz.**
 
@@ -53,28 +69,44 @@ dokumu** (transkript) - goruntu veya ses dosyasi degil.
 
 ---
 
-## Ne yapiyor
+## Iki kullanim yolu
 
-Kaynak cekimden yayina hazir pakete kadar:
+### 1. Sohbet (ana yol)
+
+Panelde yazarsin, ajan yapar. Elinde 17 arac var: zaman cizgisini okuma,
+dokum cikarma, sessizlik analizi, kesim plani kurma, kesimleri uygulama,
+klip devre disi birakma/silme/kirpma, kazanc ayari, marker koyma, Media
+Encoder'a gonderme, yayina hazir paketi yazma.
+
+Arac listesi, onay modeli ve baglam yonetimi: [docs/ajan.md](docs/ajan.md)
+
+### 2. Tek tusla (sohbetsiz)
+
+Sabit adimli akis; kararlari yapilandirma dosyasindaki esikler verir.
+Kesimleri gozden gecirmek istemiyorsan en kisa yol. Panelde alttaki
+"Tek tusla" bolumunde, ya da terminalden:
+
+```bash
+gelistir run cekim.mp4     # Premiere hic gerekmez
+```
+
+Her iki yolda da ayni boru hatti kosuyor:
 
 1. **Dokum** - whisper ile kelime kelime zaman damgali transkript
 2. **Sessizlik analizi** - `ffmpeg silencedetect` ile olu hava tespiti
-3. **Kurgu karari** - Claude dokumu okuyup atilacak yerleri isaretler:
-   sessizlik, dolgu sozcukleri ("eee", "yani"), tekrar cekimler, kendi
-   duzelttigi hatali bilgiler
-4. **Guvenlik budamasi** - modelin onerileri sabit kurallardan gecer:
-   kelime ortasindan kesilmez, 0.35 sn'den kisa parca birakilmaz, toplam surenin
-   en fazla %35'i atilir, kesim noktalarina nefes payi birakilir
-5. **Kesim** - ya Premiere zaman cizgisinde (yeni sequence olarak) ya da ffmpeg ile
-6. **Altyazi** - kesilmis zaman cizgisine tasinmis `.srt` (satir uzunlugu,
-   sure ve cakisma kurallariyla)
-7. **Ses** - iki gecisli `loudnorm` ile **-14 LUFS / -1 dBTP** (YouTube hedefi)
+3. **Kurgu karari** - sessizlik, dolgu sozcukleri ("eee", "yani"), tekrar
+   cekimler, konusmacinin kendi duzelttigi hatali bilgiler
+4. **Guvenlik budamasi** - kelime ortasindan kesilmez, 0.35 sn'den kisa parca
+   birakilmaz, toplam surenin en fazla %35'i atilir, kesim noktalarina nefes
+   payi birakilir
+5. **Kesim** - Premiere zaman cizgisinde (yeni sequence olarak) ya da ffmpeg ile
+6. **Altyazi** - kesilmis zaman cizgisine tasinmis `.srt`
+7. **Ses** - iki gecisli `loudnorm` ile **-14 LUFS / -1 dBTP**
 8. **Kodlama** - H.264 high / yuv420p / faststart, cozunurluge gore YouTube'un
    onerdigi bit hizi, AAC 384k 48kHz
-9. **Metinler** - Claude baslik adaylari, aciklama, etiketler, sabit yorum ve
-   kapak icin uygun anlari yazar
-10. **Paket** - klasore mp4, srt, kapak adaylari, `metadata.json`,
-    `aciklama.txt`, `bolumler.txt` ve bir `rapor.md` yazilir
+9. **Metinler** - baslik adaylari, aciklama, etiketler, sabit yorum, kapak anlari
+10. **Paket** - mp4, srt, kapak adaylari, `metadata.json`, `aciklama.txt`,
+    `bolumler.txt` ve bir `rapor.md`
 
 Bolumler (chapters) YouTube'un gercek kurallarina gore duzeltilir: ilki `0:00`,
 en az 3 bolum, her bolum en az 10 saniye. Kurallar saglanamazsa bolum listesi
@@ -107,6 +139,9 @@ node bin/gelistir.js doctor
 
 # 3. Premiere olmadan dene
 node bin/gelistir.js run ~/Videolar/cekim.mp4
+
+# 4. Sohbet icin sunucuyu baslat (panel buna baglanir)
+node bin/gelistir.js serve
 ```
 
 Cikti `~/Videolar/cekim-youtube/` klasorune yazilir.
@@ -168,7 +203,7 @@ Tam liste: `gelistir config` veya [core/src/config.js](core/src/config.js)
 ## Test durumu
 
 ```bash
-cd core && npm test     # 107 test
+cd core && npm test     # 148 test
 ```
 
 Kapsam:
@@ -179,6 +214,12 @@ Kapsam:
 - **ffmpeg** - arguman kurma ve cikti ayristirma (silencedetect, loudnorm, probe)
 - **Claude istekleri** - sahte istemciyle istek sekli, sema, budama, reddedilen
   istek ve beta geri dusme davranisi
+- **Ajan dongusu** - arac semalarinin gecerliligi, onay kapisi (izin/ret),
+  arac sonuclarinin tek mesajda birlesmesi, cagri butcesi, baglam sizmasi
+  (keeps listesi ve dokum modele dokulmuyor), kimlik hatasi cevirisi
+- **Cekirdek <-> panel sozlesmesi** - ajanin cagirdigi her ExtendScript
+  fonksiyonunun var oldugu, arguman sayilarinin imzalarla uyustugu ve
+  `gelistir.jsx`in ES3 uyumlu kaldigi
 - **Yerel sunucu** - token, CORS, DNS rebinding korumasi, girdi dogrulama
 - **Uctan uca** - sahte ffmpeg/ffprobe betikleriyle dort tam boru hatti kosusu;
   paketin diske yazildigi, raporun dogru sayilari tasidigi ve eksik araclarin
@@ -194,6 +235,7 @@ test videosuyla yapmani oneririm.
 
 ## Dokumanlar
 
+- [docs/ajan.md](docs/ajan.md) - sohbet modu: ne diyebilirsin, araclar, onay modeli
 - [docs/kurulum.md](docs/kurulum.md) - panel ve eklenti kurulumu, adim adim
 - [docs/mimari.md](docs/mimari.md) - parcalar nasil konusuyor, neden boyle
 - [docs/youtube-teslim.md](docs/youtube-teslim.md) - "yayina hazir" ne demek,

@@ -8,8 +8,10 @@
   </head>
   <body>
     <header>
-      <h1>Gelistir</h1>
-      <p class="sub">Claude ile kurgu, YouTube'a yayina hazir cikti</p>
+      <div class="bar">
+        <h1>Gelistir</h1>
+        <button id="btn-reconnect" class="small ghost" title="Baglantilari yenile">&#8635;</button>
+      </div>
       <div id="host-status" class="status">Premiere: baglaniyor...</div>
       <div id="core-status" class="status">Cekirdek: baglaniyor...</div>
       <div id="chips" class="chips"></div>
@@ -17,11 +19,43 @@
         <input id="token-input" type="password" placeholder="~/.gelistir/token icerigi" />
         <button id="btn-token" class="small">Kaydet</button>
       </div>
-      <button id="btn-reconnect" class="small">Yeniden bagla</button>
     </header>
 
-    <section class="flow">
-      <h2>Premiere akisi</h2>
+    <!-- Ana arayuz: sohbet. Ne istedigini yaz, ajan Premiere'de yapar. -->
+    <section class="chat">
+      <div id="messages" class="messages">
+        <div class="msg system">
+          <p>Ne yapmak istedigini yaz. Ornekler:</p>
+          <div class="suggestions">
+            <button class="suggest">Sequence'te ne var, bir bak</button>
+            <button class="suggest">Dokumu cikar ve videoyu bana ozetle</button>
+            <button class="suggest">Sessizlikleri ve dolgu sozcuklerini kes</button>
+            <button class="suggest">Bolum onerileri cikar</button>
+            <button class="suggest">Bu kurguyu YouTube'a yayina hazirla</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="approval" class="approval" hidden></div>
+
+      <div class="composer">
+        <textarea id="input" rows="2" placeholder="Ornek: girisi kisalt ve sessizlikleri at"></textarea>
+        <div class="composer-row">
+          <button id="btn-send" class="primary" disabled>Gonder</button>
+          <button id="btn-new" class="small ghost">Yeni oturum</button>
+          <span id="thinking" class="thinking" hidden><span class="spinner"></span> dusunuyor</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sohbetsiz, tek tuslu yol. Kesimleri gozden gecirmek istemiyorsan. -->
+    <details class="quick">
+      <summary>Tek tusla (sohbetsiz)</summary>
+
+      <p class="hint">
+        Adim adim, sabit bir akis. Ajan kullanmaz; kararlari yapilandirma
+        dosyasindaki esikler verir.
+      </p>
 
       <div id="step-analyze" class="step">
         <div class="step-head"><span class="dot"></span>1. Analiz ve kurgu plani</div>
@@ -49,34 +83,26 @@
         <div class="step-detail"></div>
       </div>
       <button id="btn-export" class="action" disabled>Master al ve paketle</button>
-    </section>
 
-    <section class="flow alt">
-      <h2>Hizli akis</h2>
-      <p class="hint">
-        Premiere'e dokunmadan, dosyayi dogrudan yayina hazir pakete cevirir.
-        Kesimleri elle gozden gecirmek istemiyorsan en kisa yol bu.
-      </p>
       <div id="step-quick" class="step">
-        <div class="step-head"><span class="dot"></span>Tek gecis</div>
+        <div class="step-head"><span class="dot"></span>Premiere'siz: dosyadan pakete</div>
         <div class="step-detail"></div>
       </div>
-      <button id="btn-quick" class="action" disabled>Dosyadan pakete</button>
-    </section>
+      <button id="btn-quick" class="action" disabled>Dosya sec ve paketle</button>
+    </details>
 
     <section id="plan" class="panel" hidden></section>
     <section id="bundle" class="panel" hidden></section>
 
-    <section class="logs">
-      <div class="log-head">
-        <h2>Kayit</h2>
-        <span id="spinner" class="spinner" hidden></span>
-      </div>
+    <details class="logs">
+      <summary>Kayit</summary>
       <div id="log" class="log"></div>
-    </section>
+    </details>
 
     <script src="js/csinterface.js"></script>
+    <script src="js/bridge.js"></script>
     <script src="js/api.js"></script>
+    <script src="js/agent.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>
