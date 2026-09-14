@@ -77,6 +77,21 @@ test("mcp komutu kullanici kapsamini kullanir", () => {
   assert.match(text, /her dizinden gorunur/);
 });
 
+test("Windows yolu kacisli yazilmaz (cmd.exe icin)", () => {
+  // JSON.stringify ters boluyu ikiye katlar ve komut cmd.exe'de bozulur.
+  const plan = planSetup({
+    platform: "win32",
+    home: "C:\\Users\\anios",
+    env: { APPDATA: "C:\\Users\\anios\\AppData\\Roaming" },
+    repoRoot: "C:\\Users\\anios\\gelistir",
+  });
+  assert.ok(!plan.mcpCommand.includes("\\\\"), `kacisli ters bolu: ${plan.mcpCommand}`);
+  assert.ok(
+    plan.mcpCommand.includes(`"${plan.mcpEntry}"`),
+    `yol birebir gecmeli: ${plan.mcpCommand}`,
+  );
+});
+
 test("mcp komutu bosluklu yollarda da gecerli", () => {
   const plan = planSetup({
     platform: "darwin",

@@ -165,6 +165,9 @@ claude mcp add premiere -s user -- node "$(pwd)/bin/gelistir-mcp.js"
 # Panelde "Kopru acik - Claude Code kullanabilir" yaziyorsa hazir.
 ```
 
+Windows'ta `kur.cmd` dosyasina cift tikla (cmd.exe'de `$(pwd)` calismaz).
+macOS/Linux'ta `sh kur.sh`.
+
 Adim adim: **[docs/claude-code.md](docs/claude-code.md)**
 
 Premiere olmadan denemek icin (ANTHROPIC_API_KEY gerekir):

@@ -20,6 +20,10 @@ Premiere icindeki panel cekirdege baglanip "bana is ver" diye bekliyor.
 
 ## Kurulum
 
+> **Windows kullanicisiysan:** bu bolumdeki komutlar bash icin. cmd.exe'de
+> `$(pwd)` calismaz ve `#` ile baslayan satirlar komut sanilir. Windows icin
+> hazir betik var, [asagidaki bolume](#windows-cmdexe) bak.
+
 ### 1. ffmpeg (zorunlu)
 
 ```bash
@@ -108,6 +112,68 @@ Kopru acik - Claude Code kullanabilir      <-- bu yaziyorsa hazir
 
 Ucuncu satir yazmiyorsa panel cekirdege ulasamiyor; paneldeki yenile
 dugmesine bas.
+
+---
+
+## Windows (cmd.exe)
+<a id="windows-cmdexe"></a>
+
+cmd.exe bash degil: `$(pwd)` yok, `#` yorum degil ve blok halinde
+yapistirilan komutlar birbirine karisir. **Satirlari tek tek** calistir ya
+da hazir betigi kullan.
+
+### Hazir betik
+
+```
+git clone -b claude/premiere-pro-chrome-extension-sv7xzi https://github.com/wagnercreative/gelistir.git %USERPROFILE%\gelistir
+```
+
+Sonra `C:\Users\<kullanici>\gelistir\kur.cmd` dosyasina cift tikla.
+Betik npm paketlerini kurar, gereksinimleri kontrol eder, paneli yerine
+koyar ve sana `claude mcp add` komutunu **tam yoluyla** yazdirir. O komutu
+kopyalayip cmd penceresine yapistir.
+
+`git` komutu taninmiyorsa depoyu ZIP olarak indir:
+<https://github.com/wagnercreative/gelistir/archive/refs/heads/claude/premiere-pro-chrome-extension-sv7xzi.zip>
+Ac, icindeki klasoru `C:\Users\<kullanici>\gelistir` olarak yeniden
+adlandir, sonra `kur.cmd`'ye cift tikla.
+
+### Elle, satir satir
+
+```
+cd %USERPROFILE%\gelistir\core
+npm install
+node bin\gelistir.js doctor
+node bin\gelistir.js kurulum --uygula
+```
+
+Son komut `claude mcp add premiere -s user -- node "C:\...\gelistir-mcp.js"`
+seklinde bir satir yazdirir; onu kopyalayip calistir.
+
+### Windows'a ozel notlar
+
+- **Sembolik baglanti yok:** panel klasoru kopyalanir. `git pull` yaptiktan
+  sonra `node bin\gelistir.js kurulum --uygula` komutunu tekrar calistir,
+  yoksa panel eski kalir.
+- **PlayerDebugMode** kayit defterine yazilir (`HKCU\Software\Adobe\CSXS.9`
+  ile `.12` arasi). Yonetici hakki gerekmez.
+- **ffmpeg** icin `winget install Gyan.FFmpeg` calistirdiktan sonra cmd
+  penceresini **kapat ve yeniden ac** - PATH yeni pencerede gecerli olur.
+- npm ya da pipx ile kurulan araclar (`whisper` gibi) `.cmd` sarmalayicisi
+  olabilir; cekirdek bunlari `.cmd/.bat/.exe` uzantilarini deneyerek bulur.
+
+### Yaptigin hatalari geri alma
+
+Bozuk bir MCP kaydi olustuysa (ornegin komutta `$(pwd)` gorunuyorsa) once
+temizle:
+
+```
+claude mcp remove premiere -s user
+claude mcp remove premiere -s local
+```
+
+Ikisinden biri "not found" derse sorun degil, o kapsamda kayit yoktu.
+`claude mcp get premiere` ile kontrol et.
 
 ---
 

@@ -105,7 +105,12 @@ export function planSetup({ platform, home, env = {}, repoRoot, copy = false }) 
     mcpEntry,
     // -s user olmadan sunucu yalnizca o dizinde gorunur; video kurgularken
     // baska bir klasorde olacaksin, o yuzden kullanici kapsami sart.
-    mcpCommand: `claude mcp add premiere -s user -- node ${JSON.stringify(mcpEntry)}`,
+    //
+    // Yol duz cift tirnakla sarilir, JSON.stringify ILE DEGIL: Windows
+    // yollarindaki ters boluyu kacisli yazardi (C:\\Users\\...) ve komut
+    // cmd.exe'ye bozuk gidiyordu. Windows yollarinda cift tirnak karakteri
+    // bulunamaz, bu yuzden duz sarma guvenli.
+    mcpCommand: `claude mcp add premiere -s user -- node "${mcpEntry}"`,
     debugCommands: debugModeCommands(platform),
     warnings,
   };

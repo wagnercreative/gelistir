@@ -215,3 +215,55 @@ test("run olmayan program icin anlasilir hata verir", async () => {
   const { run } = await import("../src/ffmpeg.js");
   await assert.rejects(run("kesinlikle-olmayan-program-xyz", ["-v"]), /PATH/);
 });
+
+test("Windows'ta uzantisiz komut icin .cmd/.bat/.exe denenir", async () => {
+  const { run } = await import("../src/ffmpeg.js");
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+
+  // npm/pipx sarmalayicisini taklit et: "arac" yok ama "arac.cmd" var.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gelistir-win-"));
+  const wrapper = path.join(dir, "arac.cmd");
+  fs.writeFileSync(wrapper, "#!/bin/sh\necho 'sarmalayici kostu'\n");
+  fs.chmodSync(wrapper, 0o755);
+
+  const bare = path.join(dir, "arac");
+  // Once gercek platform davranisi: uzantisiz yok, hata verir
+  await assert.rejects(run(bare, []), /baslatilamadi/);
+
+  // win32 davranisiyla: .cmd bulunur
+  const { stdout } = await run(bare, [], { platform: "win32" });
+  assert.match(stdout, /sarmalayici kostu/);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("Windows fallback zaten uzantili komutta denenmez", async () => {
+  const { run } = await import("../src/ffmpeg.js");
+  await assert.rejects(
+    run("olmayan-arac.exe", [], { platform: "win32" }),
+    /olmayan-arac\.exe baslatilamadi/,
+  );
+});
+
+test("Windows fallback hicbiri yoksa ilk hatayi bildirir", async () => {
+  const { run } = await import("../src/ffmpeg.js");
+  await assert.rejects(run("kesinlikle-olmayan-xyz", [], { platform: "win32" }), (err) => {
+    assert.match(err.message, /kesinlikle-olmayan-xyz baslatilamadi/);
+    assert.ok(!err.message.includes(".cmd"), "kullaniciya uzanti detayi gosterilmemeli");
+    return true;
+  });
+});
+
+test("calisan komutun sifir olmayan cikis kodu fallback tetiklemez", async () => {
+  const { run } = await import("../src/ffmpeg.js");
+  await assert.rejects(
+    run("sh", ["-c", "exit 3"], { platform: "win32" }),
+    (err) => {
+      assert.equal(err.code, 3);
+      assert.equal(err.spawnFailed, undefined);
+      return true;
+    },
+  );
+});

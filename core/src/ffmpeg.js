@@ -5,8 +5,17 @@
  * sadece run* fonksiyonlari surec baslatir.
  */
 import { spawn } from "node:child_process";
+import path from "node:path";
 
-export function run(bin, args, { onStderr = null, cwd = null, onChild = null } = {}) {
+/**
+ * Windows'ta npm/pipx gibi paket yoneticileri komutlari .cmd/.bat sarmalayicisi
+ * olarak kurar. spawn() bunlari uzanti olmadan bulamaz ve ENOENT verir; o yuzden
+ * uzantilari sirayla deniyoruz. (shell:true yerine bu: bosluklu yollarda
+ * kabuk alintilama sorunu cikarmiyor.)
+ */
+const WINDOWS_EXTENSIONS = [".cmd", ".bat", ".exe"];
+
+function spawnOnce(bin, args, { onStderr = null, cwd = null, onChild = null } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { cwd, windowsHide: true });
     if (onChild) onChild(child);
@@ -20,9 +29,12 @@ export function run(bin, args, { onStderr = null, cwd = null, onChild = null } =
       stderr += text;
       if (onStderr) onStderr(text);
     });
-    child.on("error", (err) =>
-      reject(new Error(`${bin} baslatilamadi: ${err.message}. Kurulu ve PATH'te mi?`)),
-    );
+    child.on("error", (err) => {
+      const failure = new Error(`${bin} baslatilamadi: ${err.message}. Kurulu ve PATH'te mi?`);
+      failure.spawnFailed = true;
+      failure.spawnCode = err.code;
+      reject(failure);
+    });
     child.on("close", (code) => {
       if (code === 0) return resolve({ code, stdout, stderr });
       // stderr hataya da baglanir: silencedetect/loudnorm gibi olcum cagrilarinda
@@ -34,6 +46,26 @@ export function run(bin, args, { onStderr = null, cwd = null, onChild = null } =
       reject(err);
     });
   });
+}
+
+export async function run(bin, args, options = {}) {
+  const { platform = process.platform } = options;
+  try {
+    return await spawnOnce(bin, args, options);
+  } catch (err) {
+    const retryable =
+      err.spawnFailed && err.spawnCode === "ENOENT" && platform === "win32" && !path.extname(bin);
+    if (!retryable) throw err;
+
+    for (const ext of WINDOWS_EXTENSIONS) {
+      try {
+        return await spawnOnce(bin + ext, args, options);
+      } catch (retryErr) {
+        if (!(retryErr.spawnFailed && retryErr.spawnCode === "ENOENT")) throw retryErr;
+      }
+    }
+    throw err; // hicbiri bulunamadi: ilk hatayi bildir
+  }
 }
 
 // ---------------------------------------------------------------- probe
