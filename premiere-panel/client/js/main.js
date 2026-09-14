@@ -13,6 +13,7 @@
   var node = window.GelistirNode;
   var agent = null;
   var executor = null;
+  var coreRetryTimer = null;
 
   var state = {
     hostReady: false,
@@ -20,6 +21,7 @@
     source: "",
     planJob: null,
     presetPath: localStorage.getItem("gelistir.preset") || "",
+    coreHintShown: false,
     renderedLog: 0,
     chatBusy: false,
     busy: false,
@@ -292,6 +294,11 @@
     return core.health().then(
       function (h) {
         state.coreReady = true;
+        state.coreHintShown = false;
+        if (coreRetryTimer) {
+          clearTimeout(coreRetryTimer);
+          coreRetryTimer = null;
+        }
         $("core-status").textContent = "Cekirdek bagli - " + h.model;
         $("core-status").className = "status ok";
         $("token-row").hidden = true;
@@ -318,9 +325,39 @@
         state.coreReady = false;
         $("core-status").textContent = err.message;
         $("core-status").className = "status bad";
-        $("token-row").hidden = false;
+
+        // Token hatasi ile "cekirdek yok" hatasi farkli seyler: sadece
+        // yetkilendirme sorununda token alanini ac.
+        var authProblem = err.status === 401;
+        $("token-row").hidden = !authProblem;
+
+        if (!state.coreHintShown) {
+          state.coreHintShown = true;
+          log(
+            authProblem
+              ? "Token gecersiz. `gelistir token` cikisini yukaridaki alana yapistir."
+              : "Cekirdek calismiyor. Bir terminal acip `gelistir serve` calistir " +
+                  "(Windows'ta sunucu.cmd dosyasina cift tikla), ya da Claude Code'da " +
+                  "premiere MCP sunucusunu kullanan bir oturum ac. Panel kendiliginden " +
+                  "baglanacak.",
+            "warn",
+          );
+        }
+        // Kullaniciyi yenile dugmesine basmaya zorlamayalim: cekirdek
+        // sonradan ayaga kalkarsa panel kendi kendine toparlansin.
+        if (!authProblem) scheduleCoreRetry();
       },
     );
+  }
+
+  /** Cekirdek gelene kadar sessizce yeniden dener. */
+  function scheduleCoreRetry() {
+    if (coreRetryTimer) return;
+    coreRetryTimer = setTimeout(function () {
+      coreRetryTimer = null;
+      $("core-status").textContent = "Cekirdek bekleniyor...";
+      connectCore().then(refreshButtons);
+    }, 3000);
   }
 
   // ------------------------------------------------------------ tek tusla akis

@@ -148,6 +148,10 @@ dokum ve planlar korunsun):
 gelistir serve
 ```
 
+Windows'ta depo kokundeki `sunucu.cmd` dosyasina cift tiklamak da ayni isi
+yapar; macOS/Linux'ta `sh sunucu.sh`. Pencereyi acik tut - kapatirsan panel
+baglantisini kaybeder.
+
 Ekrana port ve token yazilir. Sonra Premiere'de:
 
 **Pencere > Uzantilar > Gelistir - YouTube kurgu**

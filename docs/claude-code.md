@@ -95,7 +95,29 @@ Ayri bir `gelistir serve` calistirmak **sart degil**: MCP sunucusu
 cekirdegi kendi surecinde baslatir. Zaten calisan bir cekirdek varsa ona
 baglanir.
 
-### 5. Premiere'i ac
+### 5. Cekirdegi baslat
+
+Panel calismak icin bir cekirdege baglanmak zorunda. Iki yolu var:
+
+**A) Kalici cekirdek (onerilen).** Bir pencere ac ve acik tut:
+
+```
+sunucu.cmd          (Windows - dosyaya cift tikla)
+sh sunucu.sh        (macOS / Linux)
+```
+
+Panel her zaman bagli kalir, Claude Code'u kapatip acmak bir sey bozmaz ve
+cikardigin dokum/planlar oturumlar arasinda korunur.
+
+**B) Sadece Claude Code.** MCP sunucusu cekirdegi kendi surecinde baslatir;
+ayri bir sey calistirmak gerekmez. Ama cekirdek Claude Code oturumuyla
+beraber yasar: oturum kapaninca panel baglantisini kaybeder (ve kendi
+kendine yeniden baglanir, yeni oturum acildiginda).
+
+Panel, cekirdek yoksa 3 saniyede bir sessizce yeniden dener; once paneli
+acip sonra cekirdegi baslatsan da kendi kendine toparlanir.
+
+### 6. Premiere'i ac
 
 Premiere Pro'yu **tamamen kapat ve tekrar ac** (uzanti listesi acilista
 okunur), sonra:
@@ -313,6 +335,15 @@ gelistir config port=8799
 ---
 
 ## Sorun giderme
+
+**Panelde "Cekirdege ulasilamadi (http://127.0.0.1:8787)" yaziyor**
+Cekirdek calismiyor. Yukaridaki 5. adim: `sunucu.cmd`'ye cift tikla
+(ya da `sh sunucu.sh`), veya Claude Code'da premiere MCP sunucusunu
+kullanan bir oturum ac. Panel 3 saniyede bir yeniden deniyor, elle bir sey
+yapman gerekmez - cekirdek ayaga kalkinca satir yesile doner.
+
+Hala olmuyorsa portu kontrol et: `gelistir config` cikisindaki `port`
+degeri panelin baktigi portla ayni olmali. Degistirdiysen paneli kapat-ac.
 
 **Claude Code'da premiere araclari gorunmuyor**
 Muhtemelen kapsam sorunu: `claude mcp get premiere` "in this project"
