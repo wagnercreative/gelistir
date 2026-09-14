@@ -470,7 +470,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
 <!-- ===================== TAB: ÜCRET GİRİŞİ ===================== -->
 <div id="tab-ucret" class="tab-content">
-  <input type="file" id="pdfGiris" accept=".pdf,application/pdf" style="display:none" onchange="pdfAktar(this)">
+  <input type="file" id="pdfGiris" accept=".pdf,application/pdf,.xlsx,.xls,.ods,.csv" style="display:none" onchange="pdfAktar(this)">
   <div class="info-box">
     💡 Bu sekmede girilen <strong>Maaş</strong>, <strong>Ekders</strong>, <strong>Eğitim Ödeneği</strong> ve <strong>Fazla Mesai</strong> tutarları kişi bazında toplanır ve personel listesindeki <strong>ÜCRET</strong> alanına (bildirge PEK'ine) otomatik aktarılır. Ekders ve fazla mesaide <em>saat × birim ücret</em> girerseniz tutar kendiliğinden hesaplanır; isterseniz tutarı doğrudan da yazabilirsiniz.
   </div>
@@ -492,7 +492,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <button class="btn btn-primary btn-sm" onclick="topluUygula('maas')">Uygula</button>
       <span class="text-muted">Boş satırlar dahil tüm satırlara yazar.</span>
       <span style="flex:1"></span>
-      <button class="btn btn-warning btn-sm" onclick="pdfSec('maas')" title="KBS/HYS 'SGK Kesintileri (Kişi Bazında)' raporu PDF'inden 'Prime Esas Kazanç Genel Toplam' sütununu TC eşleştirerek aktarır">📄 PDF'den Aktar (Maaş SGK Kesinti Dökümü)</button>
+      <button class="btn btn-warning btn-sm" onclick="pdfSec('maas')" title="KBS/HYS 'SGK Kesintileri (Kişi Bazında)' raporundaki 'Prime Esas Kazanç Genel Toplam' ya da 'E-Bildirge XML Dökümü Listesi'ndeki Ücret sütununu TC eşleştirerek maaşa aktarır. Dosya PDF veya Excel (xlsx/xls/ods/csv) olabilir">📄 PDF/Excel'den Aktar (Maaş)</button>
       <button class="btn btn-danger btn-sm" onclick="ucretSifirla('maas')">🧹 Maaş Tutarlarını Sıfırla</button>
     </div>
     <div class="tbl-wrap">
@@ -517,7 +517,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <button class="btn btn-success btn-sm" onclick="topluUygula('ekdersBirim')">Uygula</button>
       <span class="text-muted">Saat girdiğinizde tutar = saat × birim ücret olarak hesaplanır.</span>
       <span style="flex:1"></span>
-      <button class="btn btn-warning btn-sm" onclick="pdfSec('ekders')" title="Ek Ders 'E-Bildirge XML Dökümü Listesi' PDF'indeki Ücret sütununu TC eşleştirerek aktarır">📄 PDF'den Aktar (Ek Ders XML Dökümü)</button>
+      <button class="btn btn-warning btn-sm" onclick="pdfSec('ekders')" title="Ek Ders 'E-Bildirge XML Dökümü Listesi'ndeki Ücret sütununu TC eşleştirerek aktarır (PDF veya Excel)">📄 PDF/Excel'den Aktar (Ek Ders XML Dökümü)</button>
       <button class="btn btn-danger btn-sm" onclick="ucretSifirla('ekders')">🧹 Ekdersleri Sıfırla</button>
     </div>
     <div class="tbl-wrap">
@@ -544,7 +544,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <button class="btn btn-primary btn-sm" onclick="topluUygula('egitimTutar')">Uygula</button>
       <span class="text-muted">Tutar doğrudan girilir.</span>
       <span style="flex:1"></span>
-      <button class="btn btn-warning btn-sm" onclick="pdfSec('egitim')" title="Eğitim Ödeneği 'E-Bildirge XML Dökümü Listesi' PDF'indeki Ücret sütununu TC eşleştirerek aktarır (Ek Ders formatı)">📄 PDF'den Aktar (Eğitim Ödeneği XML Dökümü)</button>
+      <button class="btn btn-warning btn-sm" onclick="pdfSec('egitim')" title="Eğitim Ödeneği 'E-Bildirge XML Dökümü Listesi'ndeki Ücret sütununu TC eşleştirerek aktarır (Ek Ders formatı; PDF veya Excel)">📄 PDF/Excel'den Aktar (Eğitim Ödeneği XML Dökümü)</button>
       <button class="btn btn-danger btn-sm" onclick="ucretSifirla('egitim')">🧹 Eğitim Ödeneklerini Sıfırla</button>
     </div>
     <div class="tbl-wrap">
@@ -569,7 +569,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <button class="btn btn-danger btn-sm" onclick="topluUygula('mesaiBirim')">Uygula</button>
       <span class="text-muted">Saat girdiğinizde tutar = saat × birim ücret olarak hesaplanır.</span>
       <span style="flex:1"></span>
-      <button class="btn btn-warning btn-sm" onclick="pdfSec('mesai')" title="Fazla Mesai 'E-Bildirge XML Dökümü Listesi' PDF'indeki Ücret sütununu TC eşleştirerek aktarır">📄 PDF'den Aktar (Fazla Mesai XML Dökümü)</button>
+      <button class="btn btn-warning btn-sm" onclick="pdfSec('mesai')" title="Fazla Mesai 'E-Bildirge XML Dökümü Listesi'ndeki Ücret sütununu TC eşleştirerek aktarır (PDF veya Excel)">📄 PDF/Excel'den Aktar (Fazla Mesai XML Dökümü)</button>
       <button class="btn btn-danger btn-sm" onclick="ucretSifirla('mesai')">🧹 Mesaileri Sıfırla</button>
     </div>
     <div class="tbl-wrap">
@@ -2627,8 +2627,10 @@ function pdfSatirlariAyristir(metin, hedef){
     const parca = metin.slice(k.idx, (konumlar[i+1]?konumlar[i+1].idx-12:k.idx+400));
     let tutar = null;
     if(hedef==='maas'){
+      // önce KBS/HYS biçimi (40.771,82), bulunamazsa E-Bildirge XML dökümü biçimi (9453.07)
       const mm = parca.match(/(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2})/);
       if(mm) tutar = parseFloat(mm[1].replace(/\./g,'').replace(',','.'));
+      else { const md = parca.match(/(?:^|\s)(\d+\.\d{2})(?=\s|$)/); if(md) tutar = parseFloat(md[1]); }
     } else {
       const mm = parca.match(/(?:^|\s)(\d+\.\d{2})(?=\s|$)/) || parca.match(/(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2})/);
       if(mm) tutar = mm[1].includes(',') ? parseFloat(mm[1].replace(/\./g,'').replace(',','.')) : parseFloat(mm[1]);
@@ -2639,15 +2641,37 @@ function pdfSatirlariAyristir(metin, hedef){
   return sonuc;
 }
 
+// Excel dökümünden (şablon veya SGK "E-Bildirge XML Dökümü Listesi") TC + tutar satırlarını çıkarır.
+// Her iki biçimde de tutar kaynağı Ücret / Maaş sütunudur.
+function ucretExcelSatirlari(f, buf){
+  if(typeof XLSX==='undefined') throw new Error('Excel kütüphanesi yüklenemedi.');
+  const sonuc = calismaKitabiAyristir(buf, f.name);
+  if(!sonuc) return [];
+  return sonuc.gelen
+    .filter(g=>g.maas!==undefined && !isNaN(g.maas))
+    .map(g=>({tc:g.tc, tutar:Math.round(g.maas*100)/100, ad:`${g.ad||''} ${g.soyad||''}`.trim()}));
+}
+
 async function pdfAktar(inp){
   const f = inp.files[0]; if(!f || !pdfHedef) return;
   const hedef = pdfHedef;
-  toast('PDF okunuyor…');
-  let metin;
-  try { metin = await pdfMetinOku(f); }
-  catch(e){ alert('PDF okunamadı: '+e.message); return; }
-  const kayitlar = pdfSatirlariAyristir(metin, hedef);
-  if(!kayitlar.length){ alert('PDF içinde TC Kimlik No + tutar satırı bulunamadı.\nDoğru dosyayı seçtiğinizden emin olun (metin katmanı olmayan taranmış PDF\'ler okunamaz).'); return; }
+  const adi = String(f.name||'').toLocaleLowerCase('tr');
+  const pdfMi = /\.pdf$/.test(adi) || f.type==='application/pdf';
+  const kaynak = pdfMi ? 'PDF' : 'Excel';
+  let kayitlar;
+  try {
+    toast(kaynak+' okunuyor…');
+    kayitlar = pdfMi ? pdfSatirlariAyristir(await pdfMetinOku(f), hedef)
+                     : ucretExcelSatirlari(f, await f.arrayBuffer());
+  }
+  catch(e){ alert(kaynak+' okunamadı: '+((e && e.message) ? e.message : e)); inp.value=''; return; }
+  inp.value='';
+  if(!kayitlar.length){
+    alert(pdfMi
+      ? 'PDF içinde TC Kimlik No + tutar satırı bulunamadı.\nDoğru dosyayı seçtiğinizden emin olun (metin katmanı olmayan taranmış PDF\'ler okunamaz — bu durumda aynı listenin Excel dökümünü kullanabilirsiniz).'
+      : 'Excel içinde TC (SGNO) + Ücret sütunu bulunamadı.\n"E-Bildirge XML Dökümü Listesi" dökümünü ya da personel şablonunu seçtiğinizden emin olun.');
+    return;
+  }
 
   const etiket = {maas:'Maaş', ekders:'Ekders', egitim:'Eğitim Ödeneği', mesai:'Fazla Mesai'}[hedef];
   const tcMap = {}; personeller.forEach((p,i)=>{ if(p.tc) tcMap[String(p.tc).trim()] = i; });
@@ -2655,12 +2679,12 @@ async function pdfAktar(inp){
   kayitlar.forEach(k=>{ if(tcMap[k.tc]!==undefined) eslesen.push({idx:tcMap[k.tc], ...k}); else bulunamayan.push(k); });
   const listedeYok = personeller.filter((p,i)=>!eslesen.some(e=>e.idx===i));
 
-  let msg = `${etiket} — ${f.name}\n\nPDF'de ${kayitlar.length} satır bulundu.\n✅ ${eslesen.length} personel TC ile eşleşti ve tutarı aktarılacak:\n`;
+  let msg = `${etiket} — ${f.name}\n\n${kaynak} dosyasında ${kayitlar.length} satır bulundu.\n✅ ${eslesen.length} personel TC ile eşleşti ve tutarı aktarılacak:\n`;
   eslesen.slice(0,25).forEach(e=>{ msg += `   • ${personeller[e.idx].ad} ${personeller[e.idx].soyad}: ${fmt(e.tutar)} TL\n`; });
   if(eslesen.length>25) msg += `   … (+${eslesen.length-25})\n`;
-  if(bulunamayan.length){ msg += `\n⚠️ PDF'de olup personel listenizde bulunmayan ${bulunamayan.length} kişi (atlanacak):\n`; bulunamayan.forEach(b=>{ msg += `   • ${b.tc} ${b.ad||''} — ${fmt(b.tutar)} TL\n`; }); }
+  if(bulunamayan.length){ msg += `\n⚠️ ${kaynak} dosyasında olup personel listenizde bulunmayan ${bulunamayan.length} kişi (atlanacak):\n`; bulunamayan.forEach(b=>{ msg += `   • ${b.tc} ${b.ad||''} — ${fmt(b.tutar)} TL\n`; }); }
   if(listedeYok.length){
-    msg += `\nℹ️ Personel listenizde olup PDF'de bulunmayan ${listedeYok.length} kişi:\n`;
+    msg += `\nℹ️ Personel listenizde olup ${kaynak} dosyasında bulunmayan ${listedeYok.length} kişi:\n`;
     listedeYok.forEach(p=>{ msg += `   • ${p.ad} ${p.soyad}\n`; });
     msg += hedef==='maas' ? `   (Bu kişilerin maaşı değiştirilmeyecek.)\n` : `   (Bu kişilerin ${etiket.toLowerCase()} tutarı SIFIRLANACAK — bu ay ${etiket.toLowerCase()} almadıkları varsayılır.)\n`;
   }
@@ -2670,10 +2694,11 @@ async function pdfAktar(inp){
   const bugun = new Date().toLocaleDateString('tr-TR');
   eslesen.forEach(e=>{
     const p = personeller[e.idx];
-    if(hedef==='maas'){ p.maas = e.tutar; p.maasNot = `PDF aktarım ${bugun}`; }
-    else if(hedef==='ekders'){ p.ekdersTutar = e.tutar; p.ekdersSaat = 0; p.ekdersBirim = 0; p.ekdersNot = `PDF aktarım ${bugun}`; }
-    else if(hedef==='egitim'){ p.egitimTutar = e.tutar; p.egitimNot = `PDF aktarım ${bugun}`; }
-    else { p.mesaiTutar = e.tutar; p.mesaiSaat = 0; p.mesaiBirim = 0; p.mesaiNot = `PDF aktarım ${bugun}`; }
+    const not = `${kaynak} aktarım ${bugun}`;
+    if(hedef==='maas'){ p.maas = e.tutar; p.maasNot = not; }
+    else if(hedef==='ekders'){ p.ekdersTutar = e.tutar; p.ekdersSaat = 0; p.ekdersBirim = 0; p.ekdersNot = not; }
+    else if(hedef==='egitim'){ p.egitimTutar = e.tutar; p.egitimNot = not; }
+    else { p.mesaiTutar = e.tutar; p.mesaiSaat = 0; p.mesaiBirim = 0; p.mesaiNot = not; }
     p.ucret = ucretHesapla(p);
   });
   if(hedef!=='maas'){
@@ -2685,7 +2710,7 @@ async function pdfAktar(inp){
     });
   }
   renderUcret(); hesapla(); taslakKaydet();
-  toast(`${etiket}: ${eslesen.length} personele PDF'den tutar aktarıldı.`);
+  toast(`${etiket}: ${eslesen.length} personele ${kaynak} dosyasından tutar aktarıldı.`);
 }
 
 
