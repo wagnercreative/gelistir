@@ -66,7 +66,7 @@ Elle yapmak istersen adimlar: [kurulum.md](kurulum.md#2-premiere-paneli)
 Onceki adim sana tam komutu yazdirir; yol senin diskindeki yol olur:
 
 ```bash
-claude mcp add premiere -- node /tam/yol/gelistir/core/bin/gelistir-mcp.js
+claude mcp add premiere -s user -- node /tam/yol/gelistir/core/bin/gelistir-mcp.js
 ```
 
 Kontrol:
@@ -75,9 +75,21 @@ Kontrol:
 claude mcp list
 ```
 
-`premiere` satirini gormelisin. Ayri bir `gelistir serve` calistirmak
-**sart degil**: MCP sunucusu cekirdegi kendi surecinde baslatir. Zaten
-calisan bir cekirdek varsa ona baglanir.
+`premiere: ... - Connected` gormelisin.
+
+**`-s user` neden onemli:** Claude Code'un varsayilan kapsami `local` -
+sunucu yalnizca komutu calistirdigin klasorde gorunur. Video kurgularken
+baska bir dizinde olacaksin ve orada `premiere` diye bir sey olmaz.
+`-s user` her dizinden erisilir kilar (`claude mcp get premiere`, "available
+in all your projects" yazmali).
+
+**Yol tuzagi:** `$(pwd)` bash/zsh'te calisir ve `gelistir/core` icinde
+olmani gerektirir. Windows'ta cmd/PowerShell'de bu ise yaramaz. En
+guvenlisi `gelistir kurulum`'un yazdirdigi tam yolu kopyalamak.
+
+Ayri bir `gelistir serve` calistirmak **sart degil**: MCP sunucusu
+cekirdegi kendi surecinde baslatir. Zaten calisan bir cekirdek varsa ona
+baglanir.
 
 ### 5. Premiere'i ac
 
@@ -217,7 +229,7 @@ Yani iki kullanim da gecerli:
 
 ```bash
 # A) Sadece MCP: cekirdek Claude Code oturumuyla yasar
-claude mcp add premiere -- node /yol/core/bin/gelistir-mcp.js
+claude mcp add premiere -s user -- node /yol/core/bin/gelistir-mcp.js
 
 # B) Kalici cekirdek: oturumlar arasi dokum/plan korunur
 gelistir serve        # ayri bir terminalde acik kalir
@@ -235,6 +247,17 @@ gelistir config port=8799
 ---
 
 ## Sorun giderme
+
+**Claude Code'da premiere araclari gorunmuyor**
+Muhtemelen kapsam sorunu: `claude mcp get premiere` "in this project"
+diyorsa sunucu sadece o klasorde gorunur. Kaldir ve kullanici kapsamiyla
+ekle:
+```bash
+claude mcp remove premiere -s local
+claude mcp add premiere -s user -- node /tam/yol/core/bin/gelistir-mcp.js
+```
+Ekledikten sonra Claude Code'u yeniden baslat; arac listesi oturum
+basinda okunur.
 
 **`claude mcp list` sunucuyu "failed" gosteriyor**
 Sunucuyu elle calistirip stderr'e bak:

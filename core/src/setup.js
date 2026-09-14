@@ -103,7 +103,9 @@ export function planSetup({ platform, home, env = {}, repoRoot, copy = false }) 
     existing,
     link,
     mcpEntry,
-    mcpCommand: `claude mcp add premiere -- node ${JSON.stringify(mcpEntry)}`,
+    // -s user olmadan sunucu yalnizca o dizinde gorunur; video kurgularken
+    // baska bir klasorde olacaksin, o yuzden kullanici kapsami sart.
+    mcpCommand: `claude mcp add premiere -s user -- node ${JSON.stringify(mcpEntry)}`,
     debugCommands: debugModeCommands(platform),
     warnings,
   };
@@ -135,6 +137,7 @@ export function formatPlan(plan, { applied = false } = {}) {
 
   lines.push("", "3. Claude Code'a MCP sunucusunu ekle (bunu SEN calistir)");
   lines.push(`   ${plan.mcpCommand}`);
+  lines.push("   (-s user: her dizinden gorunur. Onsuz sadece o klasorde calisir.)");
 
   if (plan.warnings.length) {
     lines.push("", "Dikkat:");

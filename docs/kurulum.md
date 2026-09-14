@@ -166,7 +166,7 @@ Artik iki sekilde kullanabilirsin:
 
 **Claude Code'dan (onerilen):**
 ```bash
-claude mcp add premiere -- node /tam/yol/gelistir/core/bin/gelistir-mcp.js
+claude mcp add premiere -s user -- node /tam/yol/gelistir/core/bin/gelistir-mcp.js
 ```
 Ayrintilar: [claude-code.md](claude-code.md)
 

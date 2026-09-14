@@ -5,7 +5,7 @@ bagliyorsan Premiere'e de ayni sekilde: sohbet terminalde kalir, araclar
 Premiere'in icinde kosar.
 
 ```bash
-claude mcp add premiere -- node /yol/gelistir/core/bin/gelistir-mcp.js
+claude mcp add premiere -s user -- node /yol/gelistir/core/bin/gelistir-mcp.js
 ```
 
 ```
@@ -159,7 +159,7 @@ node bin/gelistir.js doctor            # ffmpeg/whisper kontrolu
 node bin/gelistir.js kurulum           # ne yapacagini gosterir
 node bin/gelistir.js kurulum --uygula  # paneli yerine koyar, izni acar
 
-claude mcp add premiere -- node "$(pwd)/bin/gelistir-mcp.js"
+claude mcp add premiere -s user -- node "$(pwd)/bin/gelistir-mcp.js"
 
 # Premiere'i kapat-ac, sonra: Pencere > Uzantilar > Gelistir
 # Panelde "Kopru acik - Claude Code kullanabilir" yaziyorsa hazir.

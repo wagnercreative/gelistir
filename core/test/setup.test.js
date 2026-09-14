@@ -66,6 +66,17 @@ test("plan gercek depo yapisiyla tutarli, uyari uretmez", () => {
   );
 });
 
+test("mcp komutu kullanici kapsamini kullanir", () => {
+  // -s user olmadan sunucu yalnizca komutun calistirildigi dizinde gorunur;
+  // kullanici video kurgularken baska bir klasorde olacak.
+  const plan = planSetup({ platform: "darwin", home: "/Users/ali", env: {}, repoRoot });
+  assert.match(plan.mcpCommand, /claude mcp add premiere -s user -- node /);
+
+  const text = formatPlan(plan);
+  assert.match(text, /-s user/);
+  assert.match(text, /her dizinden gorunur/);
+});
+
 test("mcp komutu bosluklu yollarda da gecerli", () => {
   const plan = planSetup({
     platform: "darwin",
@@ -73,7 +84,7 @@ test("mcp komutu bosluklu yollarda da gecerli", () => {
     env: {},
     repoRoot: "/Users/ali/Belgelerim/gelistir projesi",
   });
-  assert.match(plan.mcpCommand, /^claude mcp add premiere -- node "/);
+  assert.match(plan.mcpCommand, /^claude mcp add premiere -s user -- node "/);
   assert.ok(plan.mcpCommand.includes("gelistir projesi"));
   // Alintili oldugu icin kabuk yolu bolmez
   assert.equal((plan.mcpCommand.match(/"/g) || []).length, 2);
