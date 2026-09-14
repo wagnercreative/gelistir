@@ -133,7 +133,11 @@ ln -s "$(pwd)/premiere-panel" \
   "$HOME/Library/Application Support/Adobe/CEP/extensions/com.gelistir.premiere"
 ```
 
-### c) Sunucuyu baslat ve paneli ac
+### c) Cekirdegi baslat ve paneli ac
+
+Claude Code'dan kullanacaksan cekirdegi MCP sunucusu kendi baslatir, ayri
+bir sey yapmana gerek yok. Kalici bir cekirdek istersen (oturumlar arasinda
+dokum ve planlar korunsun):
 
 ```bash
 gelistir serve
@@ -143,15 +147,29 @@ Ekrana port ve token yazilir. Sonra Premiere'de:
 
 **Pencere > Uzantilar > Gelistir - YouTube kurgu**
 
-Panel acildiginda ust kisimda iki yesil satir gormelisin: Premiere baglantisi ve
-cekirdek baglantisi. Token'i panel `~/.gelistir/token` dosyasindan kendi okur.
+Panel acildiginda ust kisimda **uc yesil satir** gormelisin:
 
-Artik sohbet kutusuna yazabilirsin. Ilk denemede kucuk bir seyle basla:
+1. `Premiere 25.x - ProjeAdi / SequenceAdi`
+2. `Cekirdek bagli - claude-opus-5`
+3. `Kopru acik - Claude Code kullanabilir`
+
+Ucuncu satir onemli: komut calistirici dongusu o. Panel acik olmadan
+Premiere araclari calismaz. Token'i panel `~/.gelistir/token` dosyasindan
+kendi okur.
+
+Artik iki sekilde kullanabilirsin:
+
+**Claude Code'dan (onerilen):**
+```bash
+claude mcp add premiere -- node /tam/yol/gelistir/core/bin/gelistir-mcp.js
+```
+Ayrintilar: [claude-code.md](claude-code.md)
+
+**Panelin kendi sohbetinden:** kutuya yaz. Ilk denemede kucuk bir seyle basla:
 
 > Sequence'te ne var, bir bak
 
-Ajan zaman cizgisini okuyup sana anlatir. Ne diyebilecegin ve araclarin
-tam listesi: [ajan.md](ajan.md)
+Ne diyebilecegin ve araclarin tam listesi: [ajan.md](ajan.md)
 
 ### d) Export preset (.epr)
 
@@ -203,8 +221,13 @@ PlayerDebugMode ayarlanmadi ya da klasor adi yanlis. Klasor adi tam olarak
 Ayardan sonra Premiere'i tamamen kapatip ac.
 
 **Panel "Cekirdege ulasilamadi" diyor**
-`gelistir serve` calismiyor. Baska bir terminalde baslat ve panelde
-**Yeniden bagla**ya bas.
+Cekirdek ayakta degil. Ya `gelistir serve` calistir, ya da Claude Code'da
+MCP sunucusunu kullanan bir oturum ac (o da cekirdegi baslatir). Sonra
+panelde yenile dugmesine bas.
+
+**Panelde "Kopru: kapali" yaziyor**
+Cekirdege baglanildi ama komut calistirici dongusu kosmuyor. Yenile
+dugmesine bas; duzelmezse panelin konsoluna bak (asagida hata ayiklama).
 
 **Panel "Token gecersiz" diyor**
 Panel token dosyasini okuyamamis. `gelistir token` cikisini kopyalayip panelin

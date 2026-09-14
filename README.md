@@ -1,48 +1,64 @@
 # Gelistir
 
-Premiere Pro icinde **sohbet ederek** kurgu yapmani saglayan bir eklenti.
-Ne istedigini yazarsin; ajan zaman cizgisine bakar, dokumu okur, kesimi yapar
-ve videoyu YouTube'a yuklenmeye hazir hale getirir.
+Premiere Pro'yu **Claude Code'a baglayan** bir MCP sunucusu. Chrome'a nasil
+bagliyorsan Premiere'e de ayni sekilde: sohbet terminalde kalir, araclar
+Premiere'in icinde kosar.
 
-```
-Sen:   Sessizlikleri ve dolgu sozcuklerini kes
-Ajan:  ⚙ zaman cizgisini okuyor
-Ajan:  ⚙ konusmayi yaziya ceviriyor
-Ajan:  41 yerde kesim buldum: 2:14 sessizlik, 38 sn dolgu sozcugu, iki
-       tekrar cekim. 12:03 -> 9:31 (%21 kisaliyor). Uygulayayim mi?
-Sen:   uygula
-Ajan:  "Gelistir - cekim" adiyla yeni bir sequence kurdum, 42 parca.
-       Orijinal sequence'e dokunmadim.
+```bash
+claude mcp add premiere -- node /yol/gelistir/core/bin/gelistir-mcp.js
 ```
 
-Yikici bir sey yapmadan once izin ister. Kesim onerileri koddaki guvenlik
-kurallarindan gecer. Yayinlama dugmesine basmaz.
+```
+> premiere'de acik sequence'te ne var?
 
-**Ajan modunun tamami: [docs/ajan.md](docs/ajan.md)**
+  premiere_get_sequence
+  Ana sequence, 10:12. Tek video kanalinda 1 klip, iki ses kanali.
+
+> sessizlikleri ve dolgu sozcuklerini kes
+
+  media_transcribe        (whisper, ~40 sn)
+  transcript_read         0-300 sn
+  media_detect_silence    18 sessizlik, 2:14
+  build_cut_plan          plan-1: 10:12 -> 8:03 (%21)
+  premiere_apply_keeps    "Gelistir kurgu" - 34 parca
+
+  Yeni sequence kurdum, orijinale dokunmadim. Atilanlar: 2:14 sessizlik,
+  31 sn dolgu sozcugu, 4. dakikada iki tekrar cekim.
+```
+
+**Kurulum ve kullanim: [docs/claude-code.md](docs/claude-code.md)**
+
+Premiere'in icinde de bir sohbet paneli var (Claude Code kullanmak
+istemezsen) ve sohbetsiz tek tuslu bir akis. Ucu de ayni araclari kullanir.
 
 ---
 
-## Neden Premiere eklentisi, Chrome eklentisi degil
+## Baglanti nasil kuruluyor
 
-Claude'un Chrome eklentisi **tarayici sekmeleri** uzerinde calisir. Premiere
-Pro masaustu uygulamasi ve tarayicinin kum havuzunun tamamen disinda; bir
-Chrome eklentisi Premiere'in zaman cizgisini goremez, klip kesemez, export
-baslatamaz. Bu bir izin ayari degil, mimari bir sinir.
+Premiere **disaridan baglanti kabul edemez** - Chrome'un aksine bir hata
+ayiklama portu yok. O yuzden yon tersine cevrildi: Premiere'in icindeki
+panel cekirdege baglanip "bana is ver" diye bekliyor (uzun-yoklama).
 
-Ama **ayni deneyim** Premiere'in kendi eklenti sistemiyle kurulabiliyor:
+```
+Claude Code ──stdio──► gelistir-mcp ──HTTP──► gelistir cekirdegi
+                                                    │
+                                       uzun-yoklama │
+                                                    ▼
+                                          Premiere paneli (CEP)
+                                          ExtendScript calistirir
+```
 
-| Eklenti turu | Ne yapar | Bu projede |
-|---|---|---|
-| **CEP paneli** | Premiere icinde acilan web paneli (HTML/JS) + ExtendScript ile projeye tam erisim | `premiere-panel/` - kullandigimiz yol |
-| UXP paneli | CEP'in yeni nesli; Premiere'de API yuzeyi henuz daha sinirli | ileride gecis |
-| Chrome eklentisi | Sadece tarayici. Premiere'e erisemez | `chrome-extension/` - yalniz YouTube Studio tarafi |
+**Panel acik olmadan Premiere araclari calismaz** - baglantinin kendisi o.
+Panelde "Kopru acik - Claude Code kullanabilir" yaziyorsa hazir.
 
-Yani panel, Chrome eklentisinin tarayicida yaptigi seyi Premiere'de yapiyor:
-sohbet + arac cagirma + onay isteme.
+Premiere'in icine giren parca bir **CEP paneli**: Premiere icinde acilan bir
+web sayfasi + ExtendScript ile projeye tam erisim. Bir Chrome eklentisi
+Premiere'e erisemez (tarayici kum havuzunun disinda), bu yuzden
+`chrome-extension/` yalniz YouTube Studio tarafinda kullaniliyor.
 
 ---
 
-## Uc parca
+## Parcalar
 
 ```
                     ┌─────────────────────────────────────────┐
@@ -56,11 +72,12 @@ sohbet + arac cagirma + onay isteme.
   eklentisi  HTTP   └─────────────────────────────────────────┘
 ```
 
-- **`core/`** - isi yapan cekirdek. Ajan dongusunu (model <-> arac) surduren
-  taraf da burada. Tek basina da calisir: `gelistir run video.mp4` Premiere
-  olmadan yayina hazir paket uretir.
-- **`premiere-panel/`** - Premiere icindeki panel. Sohbet arayuzu ve
-  ExtendScript tarafi; ajanin Premiere araclarini bu panel calistirir.
+- **`core/`** - isi yapan cekirdek: araclar, Premiere koprusu, boru hatti.
+  MCP sunucusu (`bin/gelistir-mcp.js`) da burada. Tek basina da calisir:
+  `gelistir run video.mp4` Premiere olmadan yayina hazir paket uretir.
+- **`premiere-panel/`** - Premiere icindeki panel. Iki isi var: (1) komut
+  calistirici - Claude Code'un istedigi ExtendScript'i kosturur, (2) kendi
+  sohbet arayuzu (Claude Code kullanmak istemezsen).
 - **`chrome-extension/`** - uretilen baslik/aciklama/bolum/etiketleri YouTube
   Studio formuna doldurur. **Yayinla dugmesine basmaz.**
 
@@ -69,18 +86,22 @@ dokumu** (transkript) - goruntu veya ses dosyasi degil.
 
 ---
 
-## Iki kullanim yolu
+## Uc kullanim yolu
 
-### 1. Sohbet (ana yol)
+Ucu de ayni 17 araci ve ayni guvenlik kurallarini kullanir.
 
-Panelde yazarsin, ajan yapar. Elinde 17 arac var: zaman cizgisini okuma,
-dokum cikarma, sessizlik analizi, kesim plani kurma, kesimleri uygulama,
-klip devre disi birakma/silme/kirpma, kazanc ayari, marker koyma, Media
-Encoder'a gonderme, yayina hazir paketi yazma.
+### 1. Claude Code (MCP) - ana yol
 
-Arac listesi, onay modeli ve baglam yonetimi: [docs/ajan.md](docs/ajan.md)
+Sohbet terminalde, araclar Premiere'de. Kurulum ve ornekler:
+**[docs/claude-code.md](docs/claude-code.md)**
 
-### 2. Tek tusla (sohbetsiz)
+### 2. Premiere panelindeki sohbet
+
+Claude Code kullanmak istemezsen panelin kendi sohbeti var. Aradaki tek
+fark izni kimin sordugu: MCP yolunda Claude Code, panelde cekirdek.
+Ayrintilar: [docs/ajan.md](docs/ajan.md)
+
+### 3. Tek tusla (sohbetsiz)
 
 Sabit adimli akis; kararlari yapilandirma dosyasindaki esikler verir.
 Kesimleri gozden gecirmek istemiyorsan en kisa yol. Panelde alttaki
@@ -132,16 +153,22 @@ Dürüst olmak gerekirse bunlar **elle** yapilacak isler:
 # 1. Cekirdek
 cd core
 npm install
-export ANTHROPIC_API_KEY=sk-ant-...
 
 # 2. Gereksinimleri kontrol et
 node bin/gelistir.js doctor
 
-# 3. Premiere olmadan dene
-node bin/gelistir.js run ~/Videolar/cekim.mp4
+# 3. Claude Code'a ekle
+claude mcp add premiere -- node "$(pwd)/bin/gelistir-mcp.js"
 
-# 4. Sohbet icin sunucuyu baslat (panel buna baglanir)
-node bin/gelistir.js serve
+# 4. Premiere'i ac: Pencere > Uzantilar > Gelistir
+#    Panelde "Kopru acik" yaziyorsa hazir.
+```
+
+Premiere olmadan denemek icin (ANTHROPIC_API_KEY gerekir):
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+node bin/gelistir.js run ~/Videolar/cekim.mp4
 ```
 
 Cikti `~/Videolar/cekim-youtube/` klasorune yazilir.
@@ -154,7 +181,7 @@ Premiere paneli ve Chrome eklentisi icin: **[docs/kurulum.md](docs/kurulum.md)**
 |---|---|---|
 | Node.js 18.17+ | cekirdek | zorunlu |
 | ffmpeg + ffprobe | analiz, kesim, kodlama | zorunlu |
-| `ANTHROPIC_API_KEY` | kurgu karari ve metinler | sadece sessizlik kesimi yapilir |
+| `ANTHROPIC_API_KEY` | panel sohbeti ve tek tusla akis | Claude Code (MCP) yolunda **gerekmez** |
 | whisper (herhangi biri) | dokum | dolgu sozcugu temizligi, altyazi, bolumler ve metinler uretilemez |
 | Premiere Pro 2021+ | panel | cekirdek yine de tek basina calisir |
 
@@ -166,6 +193,7 @@ whisper icin `whisper` (OpenAI CLI), `whisper-cli` / `whisper-cpp`
 ## Komutlar
 
 ```bash
+gelistir-mcp              # MCP sunucusu (Claude Code bunu calistirir)
 gelistir run <video>      # bastan sona: yayina hazir paket
 gelistir plan <video>     # sadece dokum + kesim plani (panel bunu kullanir)
 gelistir deliver <master> --state <job.json>   # Premiere master'ini paketle
@@ -190,6 +218,12 @@ Tam liste: `gelistir config` veya [core/src/config.js](core/src/config.js)
 
 ## Guvenlik
 
+- **Izni kim sorar:** MCP yolunda Claude Code'un kendi izin sistemi
+  (yikici araclar `destructiveHint` ile isaretli). Panel sohbetinde
+  cekirdek, panelde onay karti gosterir.
+- **Koddaki kurallar izinden bagimsiz:** kesim onerileri `build_cut_plan`'da
+  budanir (kelime sinirina hizalama, nefes payi, en fazla %35 atma),
+  `premiere_apply_keeps` orijinale dokunmaz, paket `private` isaretlenir.
 - Yerel sunucu yalnizca `127.0.0.1`'e baglanir ve her istek icin
   `~/.gelistir/token` dosyasindaki token'i ister. Boylece tarayicida acik
   rastgele bir sayfa kurgu baslatamaz.
@@ -203,7 +237,7 @@ Tam liste: `gelistir config` veya [core/src/config.js](core/src/config.js)
 ## Test durumu
 
 ```bash
-cd core && npm test     # 148 test
+cd core && npm test     # 195 test
 ```
 
 Kapsam:
@@ -217,7 +251,14 @@ Kapsam:
 - **Ajan dongusu** - arac semalarinin gecerliligi, onay kapisi (izin/ret),
   arac sonuclarinin tek mesajda birlesmesi, cagri butcesi, baglam sizmasi
   (keeps listesi ve dokum modele dokulmuyor), kimlik hatasi cevirisi
-- **Cekirdek <-> panel sozlesmesi** - ajanin cagirdigi her ExtendScript
+- **Premiere koprusu** - komut kuyrugu, uzun-yoklama, zaman asimi,
+  panel kopmasi, kuyruk doluluk siniri
+- **MCP sunucusu** - arac listesi ve annotations, gercek bir MCP istemcisiyle
+  (bellek uzerinden) arac cagirma, hata sozlesmesi, HTTP istemcisi
+- **Canli MCP** - gercek `gelistir-mcp` sureci baslatilip Claude Code gibi
+  stdio uzerinden konusuluyor: arac listesi, panel yoksa kurulum uyarisi,
+  taklit panelin komutu calistirip sonucun modele donmesi
+- **Cekirdek <-> panel sozlesmesi** - cagrilan her ExtendScript
   fonksiyonunun var oldugu, arguman sayilarinin imzalarla uyustugu ve
   `gelistir.jsx`in ES3 uyumlu kaldigi
 - **Yerel sunucu** - token, CORS, DNS rebinding korumasi, girdi dogrulama
@@ -235,7 +276,8 @@ test videosuyla yapmani oneririm.
 
 ## Dokumanlar
 
-- [docs/ajan.md](docs/ajan.md) - sohbet modu: ne diyebilirsin, araclar, onay modeli
+- [docs/claude-code.md](docs/claude-code.md) - **MCP kurulumu**: Claude Code'dan Premiere'e baglanmak
+- [docs/ajan.md](docs/ajan.md) - araclar, onay modeli, baglam yonetimi
 - [docs/kurulum.md](docs/kurulum.md) - panel ve eklenti kurulumu, adim adim
 - [docs/mimari.md](docs/mimari.md) - parcalar nasil konusuyor, neden boyle
 - [docs/youtube-teslim.md](docs/youtube-teslim.md) - "yayina hazir" ne demek,

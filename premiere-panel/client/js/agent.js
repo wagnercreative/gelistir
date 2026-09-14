@@ -14,7 +14,6 @@
     this.sessionId = null;
     this.onUpdate = (options && options.onUpdate) || function () {};
     this.onError = (options && options.onError) || function () {};
-    this.onToolRun = (options && options.onToolRun) || function () {};
     this.stopped = false;
   }
 
@@ -65,42 +64,6 @@
       });
   };
 
-  /** Premiere araclarini sirayla kosturur ve sonuclari cekirdege gonderir. */
-  Agent.prototype.runHostTools = function (calls) {
-    var self = this;
-    var results = [];
-    var chain = Promise.resolve();
-
-    calls.forEach(function (call) {
-      chain = chain.then(function () {
-        self.onToolRun(call);
-        return GelistirHost.hostRaw(call.fn, call.args).then(
-          function (raw) {
-            var isError = false;
-            try {
-              isError = JSON.parse(raw).ok === false;
-            } catch (err) {
-              isError = true;
-            }
-            results.push({ id: call.id, content: raw, isError: isError });
-          },
-          function (err) {
-            // Kopru hatasi da modele bildirilir; model baska yol deneyebilir.
-            results.push({ id: call.id, content: String(err.message || err), isError: true });
-          },
-        );
-      });
-    });
-
-    return chain.then(function () {
-      return self.core.request(
-        "POST",
-        "/agent/sessions/" + self.sessionId + "/tool-results",
-        { results: results },
-      );
-    });
-  };
-
   /** Bir duraga gelene kadar durumu izler. */
   Agent.prototype.pump = function () {
     var self = this;
@@ -114,19 +77,6 @@
         self.view().then(
           function (view) {
             self.onUpdate(view);
-
-            if (view.status === "awaiting_tools" && view.pendingHost.length) {
-              clearInterval(timer);
-              self.runHostTools(view.pendingHost).then(
-                function () {
-                  resolve(self.pump());
-                },
-                function (err) {
-                  reject(err);
-                },
-              );
-              return;
-            }
 
             if (view.status === "awaiting_approval") {
               clearInterval(timer);
@@ -147,7 +97,9 @@
               return;
             }
 
-            busy = false; // "thinking": beklemeye devam
+            // "thinking" veya "awaiting_tools": beklemeye devam.
+            // Premiere araclarini calistirici dongusu (executor.js) kosturuyor.
+            busy = false;
           },
           function (err) {
             clearInterval(timer);

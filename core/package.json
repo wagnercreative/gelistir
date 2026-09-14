@@ -5,16 +5,19 @@
   "type": "module",
   "description": "Claude destekli, YouTube'a yayina hazir video kurgu cekirdegi (Premiere Pro paneli ve Chrome eklentisi bu cekirdegi kullanir).",
   "bin": {
-    "gelistir": "./bin/gelistir.js"
+    "gelistir": "./bin/gelistir.js",
+    "gelistir-mcp": "./bin/gelistir-mcp.js"
   },
   "engines": {
     "node": ">=18.17"
   },
   "scripts": {
     "serve": "node bin/gelistir.js serve",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "mcp": "node bin/gelistir-mcp.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.70.0"
+    "@anthropic-ai/sdk": "^0.70.0",
+    "@modelcontextprotocol/sdk": "^1.30.0"
   }
 }

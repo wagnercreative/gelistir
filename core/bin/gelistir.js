@@ -45,6 +45,10 @@ function parseFlags(args) {
 
 const HELP = `gelistir - Claude destekli YouTube kurgu cekirdegi
 
+Claude Code'dan Premiere'e baglanmak icin MCP sunucusunu ekle:
+  claude mcp add premiere -- node <bu-dizin>/bin/gelistir-mcp.js
+
+Komutlar:
   gelistir serve
   gelistir run <video> [-o dizin] [--srt dokum.srt] [--lang tr] [--burn-subs]
   gelistir plan <video> [-o dizin]

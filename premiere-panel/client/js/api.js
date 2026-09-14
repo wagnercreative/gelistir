@@ -115,6 +115,9 @@
   Core.prototype.cancel = function (id) {
     return this.request("POST", "/jobs/" + id + "/cancel", {});
   };
+  Core.prototype.hostStatus = function () {
+    return this.request("GET", "/host/status");
+  };
 
   /**
    * Is bitene kadar olaylari izler.

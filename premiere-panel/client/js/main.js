@@ -12,6 +12,7 @@
   var core = new GelistirCore();
   var node = window.GelistirNode;
   var agent = null;
+  var executor = null;
 
   var state = {
     hostReady: false,
@@ -205,9 +206,6 @@
         onUpdate: function (view) {
           renderSessionLog(view);
         },
-        onToolRun: function (call) {
-          log("Premiere: " + call.fn + "(" + call.args.join(", ") + ")");
-        },
         onError: function (message) {
           log(message, "error");
         },
@@ -258,6 +256,38 @@
     return el;
   }
 
+  /**
+   * Komut calistiriciyi baslatir. Bu dongu "Premiere baglantisi"nin kendisi:
+   * Claude Code'daki MCP istemcisi de, panelin sohbeti de komutlari buradan
+   * gecirir.
+   */
+  function startExecutor() {
+    if (executor) return;
+    executor = new GelistirExecutor(core, {
+      onStatus: function (status) {
+        var el = $("bridge-status");
+        if (!status || !status.connected) {
+          el.textContent = "Kopru: kapali" + (status && status.error ? " - " + status.error : "");
+          el.className = "status bad";
+          return;
+        }
+        var detail = "Kopru acik - Claude Code kullanabilir";
+        if (status.running) detail += " (" + status.running + " komut calisiyor)";
+        else if (status.lastCommand) detail += " - son: " + status.lastCommand.label;
+        el.textContent = detail;
+        el.className = "status ok";
+      },
+      onCommand: function (command) {
+        log("Premiere: " + command.fn + "(" + command.args.join(", ") + ")");
+      },
+      onError: function (err) {
+        log("Kopru: " + (err.message || err), "warn");
+      },
+    });
+    executor.start();
+    log("Komut calistirici basladi; Premiere araclari kullanilabilir.", "ok");
+  }
+
   function connectCore() {
     return core.health().then(
       function (h) {
@@ -279,8 +309,10 @@
         if (!h.ffmpeg) log("ffmpeg bulunamadi - kesim ve kodlama yapilamaz.", "error");
         if (!h.whisper) log("whisper yok: dokum, altyazi ve bolumler uretilemez.", "warn");
         if (!h.hasApiKey) {
-          log("ANTHROPIC_API_KEY yok: sohbet calismaz, tek tusla akis sadece sessizlik keser.", "warn");
+          log("ANTHROPIC_API_KEY yok: panel sohbeti calismaz. Claude Code'dan " +
+              "MCP ile kullanmak icin anahtar gerekmez.", "warn");
         }
+        startExecutor();
       },
       function (err) {
         state.coreReady = false;
@@ -608,7 +640,12 @@
       connectCore().then(refreshButtons);
     });
 
-    log("Panel hazir. Terminalde `gelistir serve` calistigindan emin ol.");
+    window.addEventListener("beforeunload", function () {
+      if (executor) executor.stop();
+    });
+
+    log("Panel hazir. Cekirdek icin `gelistir serve` ya da Claude Code'daki " +
+        "MCP sunucusu calisiyor olmali.");
     connectHost().then(connectCore).then(refreshButtons);
   }
 

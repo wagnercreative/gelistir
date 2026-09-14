@@ -57,19 +57,70 @@ hem de yerel Node sureciyle konusabiliyor.
 | `ffmpeg.js` | arguman kurma + cikti ayristirma (saf), surec baslatma (degil) | kismen |
 | `transcribe.js` | whisper bulma ve cikti bicimlerini normalize etme | kismen |
 | `claude.js` | iki istem: kurgu karari ve YouTube metinleri (tek tusla akis) | hayir |
-| `agent.js` | arac tanimlari, ajan dongusu, onay kapisi, cekirdek araclari | hayir |
+| `agent.js` | arac tanimlari, arac yurutme, ajan dongusu, onay kapisi | hayir |
+| `hostbridge.js` | Premiere komut kuyrugu: zaman asimi, kopma, doluluk | **evet** (zamanlayici disinda) |
+| `mcp.js` | MCP arac listesi, annotations, cekirdek HTTP istemcisi | kismen |
 | `pipeline.js` | 10 adimi sirala, paketi yaz | hayir |
-| `server.js` | yerel HTTP, token, is kuyrugu, ajan oturumlari | hayir |
+| `server.js` | yerel HTTP, token, is kuyrugu, ajan oturumlari, kopru uc noktalari | hayir |
 
 Saf olan dosyalar testlerin agirligini tasiyor. Mantik oraya toplandi ki
 ffmpeg ve Premiere olmadan da dogrulanabilsin.
 
 ---
 
-## Ajan dongusu
+## Premiere koprusu
 
-Sohbet modunda model surucu koltugunda. Ama araclar iki ayri yerde kosuyor:
-cekirdek kendi araclarini hemen kosturur, Premiere araclarini panele dondurur.
+Her sey buradan geciyor. Premiere disaridan baglanti kabul edemez (Chrome'un
+aksine bir hata ayiklama portu yok), o yuzden yon tersine cevrildi: panel
+cekirdege uzun-yoklama yapip "bana is ver" diye bekler.
+
+```
+Claude Code ──stdio──► gelistir-mcp ──┐
+                                       │
+panel sohbeti (ajan) ──────────────────┼──► hostbridge.run()
+                                       │         │
+baska MCP istemcisi ───────────────────┘         │ kuyruk
+                                                 ▼
+                                       GET /host/poll  (uzun-yoklama)
+                                                 │
+                                                 ▼
+                                       panel: evalScript(fn, args)
+                                                 │
+                                       POST /host/results
+                                                 │
+                                                 ▼
+                                       bridge.complete() -> run() cozulur
+```
+
+Tek kuyruk, tek calistirici. Kim isterse istesin ayni yoldan gecer; panelde
+tek bir dongu var (`client/js/executor.js`).
+
+`hostbridge.js` saf bir kuyruk: zaman asimi (120 sn), panel kopmasi,
+kuyruk doluluk siniri ve "panel bagli mi" kontrolu onun isi. Panel 20
+saniyeden uzun sure yoklama yapmadiysa bagli sayilmaz ve arac cagrilari
+**hemen** anlasilir bir hatayla reddedilir - 120 saniye beklemek yerine.
+
+### MCP yolu
+
+```
+Claude Code ──stdio──► bin/gelistir-mcp.js
+                          │
+                          │  arac listesi: TOOL_SPECS'ten yerel olarak
+                          │  (cekirdek ayakta olmasa da liste gorunur)
+                          │
+                          └─HTTP─► POST /tools/:name ──► agent.runTool()
+```
+
+MCP sunucusu cekirdegi once arar, bulamazsa **kendi surecinde** baslatir.
+Yani ayri bir `gelistir serve` sart degil; ama calistirirsan oturumlar
+arasinda dokum ve planlar korunur (durum o surecte yasar).
+
+---
+
+## Ajan dongusu (panel sohbeti)
+
+Panel sohbetinde model surucu koltugunda. Araclar iki yerde kosuyor:
+cekirdek kendi araclarini dogrudan, Premiere araclarini kopru uzerinden.
 
 ```
 kullanici mesaji
@@ -80,30 +131,26 @@ kullanici mesaji
 │                                                                 │
 │  1. modeli cagir (araclar + sistem istemi, onbellekli)          │
 │  2. stop_reason "tool_use" degilse -> dur, yaniti gosterme       │
-│  3. arac cagrilarini ayir:                                      │
-│       onay gerekiyor ve karar yok -> awaiting_approval, DUR      │
+│  3. arac cagrilarini sirayla coz:                               │
+│       onay gerekiyor ve karar yok -> atla, sonunda onay bekle    │
 │       onay reddedildi            -> is_error sonucu uret        │
-│       executor "core"            -> BURADA kostur               │
-│       executor "host"            -> panele dondur, DUR          │
-│  4. tum sonuclar hazir -> TEK user mesajinda gonder, 1'e don     │
-└─────────────────────────────────────────────────────────────────┘
-      │                            ▲
-      │ awaiting_tools             │ POST /agent/sessions/:id/tool-results
-      ▼                            │
-┌─────────────────────────────────────────────────────────────────┐
-│ premiere-panel  client/js/agent.js                              │
-│   pendingHost[] -> her biri icin evalScript(fn, args)           │
-│   ham JSON metnini toplayip cekirdege geri gonder               │
+│       executor "core"            -> dogrudan kostur             │
+│       executor "host"            -> hostbridge.run(), BEKLE     │
+│  4. onay bekleyen varsa -> awaiting_approval, DUR                │
+│  5. tum sonuclar hazir -> TEK user mesajinda gonder, 1'e don     │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+Onay gerektiren bir arac karsilasilinca o arac atlanir ama **kardesleri
+kosar**; tur en sonda onay bekler. Boylece kullanici onay kartina bakarken
+okuma araclari zaten bitmis olur.
 
 Onemli ayrintilar:
 
 - **Bir asistan mesajinin tum `tool_result` bloklari tek bir user mesajinda
   gider.** Bolerek gondermek modeli paralel arac cagirmaktan vazgecirir.
-- **Panel turu cagri butcesini sifirlamaz.** Butce (`maxModelCalls`, 64)
-  kullanicinin mesaji basina. Yoksa "host araci -> sonuc -> host araci"
-  dongusu hic bitmez.
+- **Cagri butcesi kullanicinin mesaji basina.** `maxModelCalls` (64) her
+  yeni kullanici mesajinda sifirlanir, arac turlarinda sifirlanmaz.
 - **HTTP istegi beklenmez.** Bir tur dakikalar surebilir (whisper, kodlama,
   model dusunme suresi), bu yuzden `POST .../message` hemen doner ve panel
   `GET /agent/sessions/:id` ile durumu yoklar.

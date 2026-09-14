@@ -13,6 +13,7 @@ import { randomBytes } from "node:crypto";
 
 import { loadConfig, saveConfig, sanitize, DEFAULTS } from "./config.js";
 import * as agent from "./agent.js";
+import { createHostBridge } from "./hostbridge.js";
 import { runPipeline, STEP_LABELS } from "./pipeline.js";
 import { detectWhisper } from "./transcribe.js";
 import { run } from "./ffmpeg.js";
@@ -124,6 +125,12 @@ export async function createServer({ config = loadConfig(), logger = console } =
   const sessions = new Map();
   let liveConfig = config;
 
+  // Premiere koprusu ve paylasilan arac durumu.
+  // Hem MCP istemcileri (Claude Code) hem panel sohbeti bunlari kullanir;
+  // boylece Claude Code'da cikarilan dokum panelde de gecerli.
+  const bridge = createHostBridge();
+  let toolState = agent.createToolState({ config: liveConfig, bridge });
+
   function getSession(id) {
     const session = sessions.get(id);
     if (!session) throw httpError(404, "Ajan oturumu bulunamadi");
@@ -224,6 +231,9 @@ export async function createServer({ config = loadConfig(), logger = console } =
       const body = await readBody(req);
       const merged = saveConfig(body.config || body);
       liveConfig = loadConfig();
+      // Yeni esikler sonraki arac cagrilarinda gecerli olsun; toplanan
+      // dokum ve planlar korunur.
+      toolState.config = liveConfig;
       return { config: liveConfig, saved: merged };
     },
 
@@ -311,6 +321,73 @@ export async function createServer({ config = loadConfig(), logger = console } =
       throw httpError(404, "Tamamlanmis is yok");
     },
 
+    // ---------------------------------------------------------- Premiere koprusu
+
+    /** Panel bunu uzun-yoklama ile cagirir: calistirilacak komutlari alir. */
+    "GET /host/poll": async (req, params, query) => {
+      const wait = Math.min(60000, Math.max(0, Number(query.get("wait") || 25000)));
+      const commands = await bridge.poll(wait);
+      return { commands, status: bridge.status() };
+    },
+
+    /** Panel calistirdigi komutlarin sonucunu buraya yazar. */
+    "POST /host/results": async (req) => {
+      const body = await readBody(req, 4_000_000);
+      const results = Array.isArray(body.results) ? body.results : [];
+      let accepted = 0;
+      for (const entry of results) {
+        if (!entry || !entry.id) continue;
+        if (bridge.complete(String(entry.id), {
+          content: entry.content,
+          isError: Boolean(entry.isError),
+        })) {
+          accepted++;
+        }
+      }
+      return { accepted, ignored: results.length - accepted, status: bridge.status() };
+    },
+
+    "GET /host/status": async () => ({ status: bridge.status() }),
+
+    /** Panel kapanirken cagirir; bekleyen komutlar bos beklemesin. */
+    "POST /host/disconnect": async () => {
+      bridge.disconnect("Panel kapandi");
+      return { status: bridge.status() };
+    },
+
+    // ---------------------------------------------------------- araclar (MCP)
+
+    "GET /tools": async () => ({
+      tools: agent.TOOL_SPECS.map((spec) => ({
+        name: spec.name,
+        description: spec.description,
+        inputSchema: spec.input_schema,
+        executor: spec.executor,
+        readOnly: Boolean(spec.readOnly),
+        approval: Boolean(spec.approval),
+      })),
+      host: bridge.status(),
+    }),
+
+    /**
+     * Tek bir araci calistirir. MCP sunucusu (gelistir-mcp) bunu kullanir.
+     *
+     * Onay kapisi BURADA uygulanmaz: bu yolu kullanan istemci (Claude Code)
+     * kendi izin sistemiyle kullaniciya soruyor. Panel sohbetinde ise ajan
+     * surucu oldugu icin onay kapisi cekirdekte calisir.
+     */
+    "POST /tools/:name": async (req, params) => {
+      const spec = agent.toolSpec(params.name);
+      if (!spec) throw httpError(404, `Bilinmeyen arac: ${params.name}`);
+      const body = await readBody(req, 4_000_000);
+      const input = body && typeof body.input === "object" && body.input !== null ? body.input : body;
+      try {
+        return { tool: spec.name, result: await agent.runTool(spec.name, input, toolState) };
+      } catch (err) {
+        throw httpError(422, err.message || String(err));
+      }
+    },
+
     // ---------------------------------------------------------- ajan modu
 
     "POST /agent/sessions": async (req) => {
@@ -320,6 +397,7 @@ export async function createServer({ config = loadConfig(), logger = console } =
         session = agent.createSession({
           config: { ...liveConfig, ...sanitize(body.overrides || {}) },
           apiKey: body.apiKey ? String(body.apiKey) : "",
+          state: toolState,
         });
       } catch (err) {
         // Anahtar eksikligi sunucu hatasi degil, yapilandirma hatasi.
@@ -348,14 +426,6 @@ export async function createServer({ config = loadConfig(), logger = console } =
       const text = String(body.text || "").trim();
       if (!text) throw httpError(400, "text zorunlu");
       runInBackground(session, () => agent.sendMessage(session, text));
-      return { session: agent.sessionView(session) };
-    },
-
-    "POST /agent/sessions/:id/tool-results": async (req, params) => {
-      const session = getSession(params.id);
-      const body = await readBody(req, 4_000_000);
-      if (!Array.isArray(body.results)) throw httpError(400, "results dizisi zorunlu");
-      runInBackground(session, () => agent.submitToolResults(session, body.results));
       return { session: agent.sessionView(session) };
     },
 
@@ -449,7 +519,7 @@ export async function createServer({ config = loadConfig(), logger = console } =
     }
   });
 
-  return { server, token, registry, sessions, config: () => liveConfig };
+  return { server, token, registry, sessions, bridge, toolState, config: () => liveConfig };
 }
 
 export async function serve({ config = loadConfig(), logger = console } = {}) {

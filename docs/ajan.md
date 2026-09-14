@@ -1,8 +1,15 @@
-# Ajan modu: Premiere icinde sohbet
+# Araclar ve ajan modu
 
-Panelin ana arayuzu bir sohbet kutusu. Ne istedigini yazarsin; model once
-bakar, sonra arac cagirarak is yapar, sonucu okur ve devam eder. Claude'un
-Chrome eklentisinin tarayicida yaptigi seyin Premiere'deki karsiligi.
+Bu dosya araclarin tamamini, onay modelini ve baglam yonetimini anlatiyor.
+Araclara iki yerden ulasilir:
+
+- **Claude Code (MCP)** - ana yol. Kurulum: [claude-code.md](claude-code.md)
+- **Premiere panelindeki sohbet** - Claude Code kullanmak istemezsen
+
+Ikisi de ayni araclari, ayni kesim kurallarini ve ayni Premiere koprusunu
+kullanir. Tek fark izni kimin sordugu (asagida).
+
+Panel sohbetinde akis soyle gorunur:
 
 ```
 Sen:     Sessizlikleri ve dolgu sozcuklerini kes
@@ -87,15 +94,24 @@ whisper, paketleme).
 
 ## Guvenlik: uc katman
 
-### 1. Onay kapisi
+### 1. Onay kapisi - izni kim sorar
 
-Yikici araclar (klip silme, kirpma, export, paketleme) once panelde bir onay
-karti gosterir. Kartta aracin adi ve modelin gonderdigi tum parametreler
-gorunur. **Izin ver** demezsen arac hic kosmaz; **Reddet** dersen modele
-"kullanici onaylamadi" bilgisi gider ve baska bir yol onerir.
+| Yol | Surucu | Izni kim sorar |
+|---|---|---|
+| Claude Code (MCP) | Claude Code | **Claude Code'un kendi izin sistemi** |
+| Panel sohbeti | cekirdekteki ajan | cekirdek, panelde onay karti gosterir |
 
-Okuma araclari ve geri alinabilir islemler onay istemez - yoksa her adimda
-tiklamak zorunda kalirdin.
+MCP yolunda cekirdek kendi onay kapisini uygulamaz - cifte sorulmasin diye.
+Yikici araclar MCP `annotations` ile isaretlenir (`destructiveHint: true`,
+salt-okunur olanlar `readOnlyHint: true`), Claude Code buna gore sorar.
+
+Panel sohbetinde ajan surucu oldugu icin onay kapisi cekirdekte calisir:
+yikici bir arac cagrilinca panelde aracin adi ve tum parametreleri gorunur.
+**Izin ver** demezsen arac hic kosmaz; **Reddet** dersen modele "kullanici
+onaylamadi" bilgisi gider ve baska bir yol onerir.
+
+Iki yolda da okuma araclari ve geri alinabilir islemler onay istemez -
+yoksa her adimda tiklamak zorunda kalirdin.
 
 ### 2. Kesim kurallari koddan geliyor
 
@@ -138,12 +154,33 @@ tekrar eden kisim ucuza geliyor.
 
 ---
 
+## Premiere koprusu
+
+Premiere disaridan baglanti kabul edemez, o yuzden yon tersine cevrildi:
+panel cekirdege uzun-yoklama yapip calistirilacak komutlari alir. Komutu kim
+istemis olursa olsun (Claude Code, panel sohbeti, baska bir MCP istemcisi)
+hepsi ayni kuyruktan gecer ve panelde tek bir calistirici dongusu vardir.
+
+Sonuclari:
+
+- **Panel acik olmadan Premiere araclari calismaz.** Hata mesaji kurulum
+  adimlarini da soyler.
+- Bir komut 120 saniyede tamamlanmazsa zaman asimina ugrar (Premiere bir
+  diyalog acmis ya da render yapiyor olabilir).
+- Panel kapanirken cekirdege haber verir; bekleyen komutlar hemen ve
+  aciklamali biter, zaman asimi beklenmez.
+- Cekirdek araclari (dokum, sessizlik, plan, paketleme) Premiere
+  gerektirmez; panel kapali olsa da calisirlar.
+
+---
+
 ## Sinirlar
 
-- **Bir istek en fazla 64 model cagrisi surer.** Bu butce kullanicinin mesaji
-  basina; Premiere araclarinin gidip gelmesi sayaci sifirlamaz. Sinira
-  gelinirse ajan durur ve isi bolmeni ister.
-- **Bir oturumda tek tur.** Onceki tur bitmeden yeni mesaj gonderemezsin.
+- **Panel sohbetinde bir istek en fazla 64 model cagrisi surer.** Bu butce
+  kullanicinin mesaji basina. Sinira gelinirse ajan durur ve isi bolmeni
+  ister. (Claude Code yolunda kendi sinirlari gecerli.)
+- **Panel sohbetinde bir oturumda tek tur.** Onceki tur bitmeden yeni mesaj
+  gonderemezsin.
 - **Kazanc esleme yaklasiktir.** `premiere_set_clip_gain` Premiere'in
   normalize Level parametresini kullanir ve esleme surumler arasi birebir
   belgelenmis degil. Yayin gurlugu bu degerle degil, paketleme sirasindaki

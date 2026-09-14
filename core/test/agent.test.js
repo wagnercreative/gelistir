@@ -10,11 +10,13 @@ import {
   toolSpec,
   needsApproval,
   coreToolNames,
+  createToolState,
   createSession,
   sendMessage,
-  submitToolResults,
   resolveApprovals,
   sessionView,
+  runTool,
+  isCoreTool,
   SYSTEM_PROMPT,
 } from "../src/agent.js";
 import { DEFAULTS } from "../src/config.js";
@@ -27,11 +29,42 @@ import {
   assistantPause,
 } from "./stubs.js";
 
-function session(responses, overrides = {}) {
-  return createSession({
-    config: { ...DEFAULTS, ...overrides },
-    client: stubClient(responses.client || responses, responses.options || {}),
+/**
+ * Sahte Premiere koprusu: paneli taklit eder, komutlari kaydedip aninda
+ * cevaplar. Gercek kopru komutu panele uzun-yoklama ile gonderir.
+ */
+function fakeBridge(responder) {
+  const calls = [];
+  return {
+    calls,
+    isConnected: () => true,
+    run({ fn, args, label }) {
+      // Gercek kopru argumanlari metne cevirir (ExtendScript'e oyle gidiyor);
+      // stub da ayni sekilde davransin ki testler tel bicimini dogrulasin.
+      calls.push({ fn, args: (args || []).map((a) => String(a)), label });
+      const reply = responder && responder({ fn, args, label });
+      return Promise.resolve(
+        reply || { content: JSON.stringify({ ok: true, fn }), isError: false },
+      );
+    },
+  };
+}
+
+function session(responses, overrides = {}, bridge = fakeBridge()) {
+  const config = { ...DEFAULTS, ...overrides };
+  const s = createSession({
+    config,
+    client: stubClient(responses, {}),
+    state: createToolState({ config, bridge }),
   });
+  s.testBridge = bridge;
+  return s;
+}
+
+function toolResults(s) {
+  return s.messages
+    .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+    .filter((b) => b.type === "tool_result");
 }
 
 // ---------------------------------------------------------------- arac tablosu
@@ -47,7 +80,6 @@ test("arac tanimlari strict tool use icin gecerli", () => {
     const schema = spec.input_schema;
     assert.equal(schema.type, "object", spec.name);
     assert.equal(schema.additionalProperties, false, `${spec.name}: additionalProperties`);
-    // strict:true tum alanlarin required olmasini ister
     assert.deepEqual(
       [...(schema.required || [])].sort(),
       Object.keys(schema.properties || {}).sort(),
@@ -62,11 +94,12 @@ test("host araclari ExtendScript eslemesine, core araclari yurutucuye sahip", ()
     if (spec.executor === "host") {
       assert.match(spec.hostFn, /^gelistir[A-Z]/, spec.name);
       assert.equal(typeof spec.hostArgs, "function", spec.name);
+      assert.equal(isCoreTool(spec.name), false, spec.name);
     } else {
       assert.ok(coreNames.has(spec.name), `${spec.name} icin yurutucu yok`);
+      assert.equal(isCoreTool(spec.name), true, spec.name);
     }
   }
-  // Tersi de dogru olmali: yurutucusu olan her arac tanimli
   for (const name of coreNames) assert.ok(toolSpec(name), `${name} tanimli degil`);
 });
 
@@ -90,6 +123,21 @@ test("yikici araclar onay ister, okuma araclari istemez", () => {
   assert.equal(needsApproval("bilinmeyen_arac"), false);
 });
 
+test("salt-okunur araclar isaretli, yazanlar degil", () => {
+  const readOnly = TOOL_SPECS.filter((s) => s.readOnly).map((s) => s.name);
+  assert.ok(readOnly.includes("premiere_get_sequence"));
+  assert.ok(readOnly.includes("transcript_read"));
+  assert.ok(readOnly.includes("build_cut_plan"), "plan kurmak projeyi degistirmez");
+
+  for (const spec of TOOL_SPECS) {
+    if (spec.approval) {
+      assert.ok(!spec.readOnly, `${spec.name} hem yikici hem salt-okunur olamaz`);
+    }
+  }
+  assert.ok(!toolSpec("premiere_apply_keeps").readOnly, "yeni sequence kurar");
+  assert.ok(!toolSpec("premiere_set_clip_enabled").readOnly);
+});
+
 test("sistem istemi kritik kurallari iceriyor", () => {
   assert.match(SYSTEM_PROMPT, /Once BAK/);
   assert.match(SYSTEM_PROMPT, /build_cut_plan/);
@@ -97,9 +145,46 @@ test("sistem istemi kritik kurallari iceriyor", () => {
   assert.match(SYSTEM_PROMPT, /0:00/);
 });
 
+// ---------------------------------------------------------------- arac yurutme
+
+test("runTool Premiere araclarini kopruye, cekirdek araclarini yurutucuye verir", async () => {
+  const bridge = fakeBridge();
+  const state = createToolState({ config: { ...DEFAULTS }, bridge });
+
+  const out = await runTool("premiere_get_project", {}, state);
+  assert.deepEqual(out, { ok: true, fn: "gelistirGetProject" });
+  assert.deepEqual(bridge.calls, [
+    { fn: "gelistirGetProject", args: [], label: "premiere_get_project" },
+  ]);
+
+  await assert.rejects(runTool("bilinmeyen", {}, state), /Bilinmeyen arac/);
+});
+
+test("kopru hata dondururse JSON icindeki mesaj ayiklanir", async () => {
+  const bridge = fakeBridge(() => ({
+    content: JSON.stringify({ ok: false, error: "Aktif sequence yok" }),
+    isError: true,
+  }));
+  const state = createToolState({ config: { ...DEFAULTS }, bridge });
+  await assert.rejects(runTool("premiere_get_sequence", { sequenceName: "" }, state), {
+    message: "Aktif sequence yok",
+  });
+});
+
+test("kopru JSON olmayan hata metni dondururse oldugu gibi aktarilir", async () => {
+  const bridge = fakeBridge(() => ({ content: "EvalScript error.", isError: true }));
+  const state = createToolState({ config: { ...DEFAULTS }, bridge });
+  await assert.rejects(runTool("premiere_get_project", {}, state), /EvalScript error/);
+});
+
+test("kopru yoksa anlasilir hata verir", async () => {
+  const state = createToolState({ config: { ...DEFAULTS }, bridge: null });
+  await assert.rejects(runTool("premiere_get_project", {}, state), /koprusu kurulmamis/);
+});
+
 // ---------------------------------------------------------------- dongu
 
-test("host araci panele donuyor, sonuc gelince tur tamamlaniyor", async () => {
+test("Premiere araci tek cagrida kosar ve tur biter", async () => {
   const s = session([
     assistantToolUse(
       [{ id: "t1", name: "premiere_get_sequence", input: { sequenceName: "" } }],
@@ -109,24 +194,18 @@ test("host araci panele donuyor, sonuc gelince tur tamamlaniyor", async () => {
   ]);
 
   await sendMessage(s, "sequence'te ne var?");
-  assert.equal(s.status, "awaiting_tools");
-  assert.deepEqual(s.pendingHost, [
-    { id: "t1", name: "premiere_get_sequence", fn: "gelistirGetSequence", args: ["", ""] },
-  ]);
-
-  await submitToolResults(s, [
-    { id: "t1", content: JSON.stringify({ ok: true, name: "Ana", duration: 40 }) },
-  ]);
   assert.equal(s.status, "end_turn");
+  assert.deepEqual(s.testBridge.calls, [
+    { fn: "gelistirGetSequence", args: ["", ""], label: "premiere_get_sequence" },
+  ]);
 
   // Arac sonucu tek bir user mesajinda gitti
-  const toolMessages = s.messages.filter(
+  const messages = s.messages.filter(
     (m) => m.role === "user" && Array.isArray(m.content) &&
       m.content.some((b) => b.type === "tool_result"),
   );
-  assert.equal(toolMessages.length, 1);
-  assert.equal(toolMessages[0].content.length, 1);
-  assert.equal(toolMessages[0].content[0].tool_use_id, "t1");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].content[0].tool_use_id, "t1");
 
   const texts = s.log.filter((l) => l.role === "assistant").map((l) => l.text);
   assert.deepEqual(texts, ["Zaman cizgisine bakiyorum", "3 klip var, en uzunu 40 saniye."]);
@@ -142,40 +221,38 @@ test("ayni turdaki birden fazla arac sonucu tek mesajda birlesir", async () => {
   ]);
 
   await sendMessage(s, "projeyi tani");
-  assert.equal(s.pendingHost.length, 2);
-
-  await submitToolResults(s, [
-    { id: "a", content: '{"ok":true}' },
-    { id: "b", content: '{"ok":true,"path":"/v/a.mp4"}' },
-  ]);
-
-  const toolMessage = s.messages.find(
+  const message = s.messages.find(
     (m) => m.role === "user" && Array.isArray(m.content) && m.content[0]?.type === "tool_result",
   );
-  assert.equal(toolMessage.content.length, 2);
-  assert.deepEqual(toolMessage.content.map((b) => b.tool_use_id), ["a", "b"]);
+  assert.equal(message.content.length, 2);
+  assert.deepEqual(message.content.map((b) => b.tool_use_id), ["a", "b"]);
+  assert.equal(s.testBridge.calls.length, 2);
 });
 
 test("Premiere hatasi is_error olarak modele doner", async () => {
-  const s = session([
-    assistantToolUse([{ id: "t1", name: "premiere_get_sequence", input: { sequenceName: "Yok" } }]),
-    assistantText("Sequence bulunamadi, adini kontrol eder misin?"),
-  ]);
-  await sendMessage(s, "Yok sequence'ini incele");
-  await submitToolResults(s, [
-    { id: "t1", content: "Sequence bulunamadi: Yok", isError: true },
-  ]);
-
-  const toolMessage = s.messages.find(
-    (m) => m.role === "user" && Array.isArray(m.content) && m.content[0]?.type === "tool_result",
+  const bridge = fakeBridge(() => ({
+    content: JSON.stringify({ ok: false, error: "Sequence bulunamadi: Yok" }),
+    isError: true,
+  }));
+  const s = session(
+    [
+      assistantToolUse([{ id: "t1", name: "premiere_get_sequence", input: { sequenceName: "Yok" } }]),
+      assistantText("Sequence bulunamadi, adini kontrol eder misin?"),
+    ],
+    {},
+    bridge,
   );
-  assert.equal(toolMessage.content[0].is_error, true);
+
+  await sendMessage(s, "Yok sequence'ini incele");
+  const [block] = toolResults(s);
+  assert.equal(block.is_error, true);
+  assert.match(block.content, /Sequence bulunamadi/);
   assert.equal(s.status, "end_turn");
 });
 
 // ---------------------------------------------------------------- onay
 
-test("yikici arac once onay bekler", async () => {
+test("yikici arac once onay bekler, onaydan once Premiere'e gitmez", async () => {
   const s = session([
     assistantToolUse(
       [{
@@ -190,7 +267,7 @@ test("yikici arac once onay bekler", async () => {
 
   await sendMessage(s, "bos klibi sil");
   assert.equal(s.status, "awaiting_approval");
-  assert.equal(s.pendingHost.length, 0, "onaydan once panele is gonderilmez");
+  assert.deepEqual(s.testBridge.calls, [], "onaydan once komut gonderilmez");
 
   const view = sessionView(s);
   assert.equal(view.pendingApproval.length, 1);
@@ -199,13 +276,10 @@ test("yikici arac once onay bekler", async () => {
   assert.ok(view.pendingApproval[0].summary.length > 10);
 
   await resolveApprovals(s, { d1: "allow" });
-  assert.equal(s.status, "awaiting_tools");
-  assert.deepEqual(s.pendingHost[0], {
-    id: "d1",
-    name: "premiere_delete_clip",
-    fn: "gelistirDeleteClip",
-    args: ["video", 0, 2, true],
-  });
+  assert.equal(s.status, "end_turn");
+  assert.deepEqual(s.testBridge.calls, [
+    { fn: "gelistirDeleteClip", args: ["video", "0", "2", "true"], label: "premiere_delete_clip" },
+  ]);
 });
 
 test("onay reddedilirse arac kosmaz, model bilgilendirilir", async () => {
@@ -222,15 +296,13 @@ test("onay reddedilirse arac kosmaz, model bilgilendirilir", async () => {
   await resolveApprovals(s, { d1: "deny" });
 
   assert.equal(s.status, "end_turn");
-  assert.equal(s.pendingHost.length, 0);
-  const toolMessage = s.messages.find(
-    (m) => m.role === "user" && Array.isArray(m.content) && m.content[0]?.type === "tool_result",
-  );
-  assert.equal(toolMessage.content[0].is_error, true);
-  assert.match(toolMessage.content[0].content, /onaylamadi/);
+  assert.deepEqual(s.testBridge.calls, [], "reddedilen arac hic kosmaz");
+  const [block] = toolResults(s);
+  assert.equal(block.is_error, true);
+  assert.match(block.content, /onaylamadi/);
 });
 
-test("onay bekleyen ve serbest araclar ayni turda karisirsa once onay sorulur", async () => {
+test("karisik turda okuma araci kosar, yikici olan onay bekler", async () => {
   const s = session([
     assistantToolUse([
       { id: "r1", name: "premiere_get_project", input: {} },
@@ -246,10 +318,15 @@ test("onay bekleyen ve serbest araclar ayni turda karisirsa once onay sorulur", 
   await sendMessage(s, "basi kirp");
   assert.equal(s.status, "awaiting_approval");
   assert.deepEqual(s.pendingApproval.map((p) => p.id), ["d1"]);
+  assert.deepEqual(
+    s.testBridge.calls.map((c) => c.fn),
+    ["gelistirGetProject"],
+    "onay gerektirmeyen kardes arac beklemez",
+  );
 
   await resolveApprovals(s, { d1: "allow" });
-  assert.equal(s.status, "awaiting_tools");
-  assert.deepEqual(s.pendingHost.map((p) => p.id), ["r1", "d1"]);
+  assert.deepEqual(s.testBridge.calls.map((c) => c.fn), ["gelistirGetProject", "gelistirTrimClip"]);
+  assert.equal(s.status, "end_turn");
 });
 
 // ---------------------------------------------------------------- cekirdek araclari
@@ -285,22 +362,19 @@ test("build_cut_plan plani saklar, apply_keeps onu oturumdan alir", async () => 
   );
 
   await sendMessage(s, "sessizlikleri ve dolgulari kes");
-
-  // build_cut_plan core tarafinda kostu, model yeni turda apply_keeps istedi
-  assert.equal(s.status, "awaiting_tools");
-  assert.equal(s.pendingHost[0].fn, "gelistirApplyKeeps");
+  assert.equal(s.status, "end_turn");
 
   const plan = s.cutPlans["plan-1"];
   assert.ok(plan, "plan saklanmali");
   assert.match(plan.keepsText, /^0\.000,10\.\d{3};/);
-  assert.equal(s.pendingHost[0].args[0], plan.keepsText, "keeps metni oturumdan geliyor");
-  assert.equal(s.pendingHost[0].args[1], media);
+
+  const applyCall = s.testBridge.calls.find((c) => c.fn === "gelistirApplyKeeps");
+  assert.ok(applyCall, "apply_keeps kopruye gitti");
+  assert.equal(applyCall.args[0], plan.keepsText, "keeps metni oturumdan geliyor");
+  assert.equal(applyCall.args[1], media);
 
   // Arac ciktisi modele ozet olarak gitti; keeps metni baglama dokulmedi
-  const resultBlock = s.messages
-    .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
-    .find((b) => b.type === "tool_result" && b.tool_use_id === "c1");
-  const payload = JSON.parse(resultBlock.content);
+  const payload = JSON.parse(toolResults(s).find((b) => b.tool_use_id === "c1").content);
   assert.equal(payload.planId, "plan-1");
   assert.equal(payload.proposalsDroppedAsInvalid, 1, "sure disi oneri dusuruldu");
   assert.equal(payload.silencesIncluded, 2);
@@ -321,12 +395,11 @@ test("gecersiz planId modele anlasilir hata olarak doner", async () => {
   ]);
 
   await sendMessage(s, "uygula");
-  assert.equal(s.status, "end_turn", "hata modele dondu, panele is gitmedi");
-  const resultBlock = s.messages
-    .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
-    .find((b) => b.type === "tool_result");
-  assert.equal(resultBlock.is_error, true);
-  assert.match(resultBlock.content, /planId bulunamadi/);
+  assert.equal(s.status, "end_turn");
+  assert.deepEqual(s.testBridge.calls, [], "gecersiz plan Premiere'e gonderilmez");
+  const [block] = toolResults(s);
+  assert.equal(block.is_error, true);
+  assert.match(block.content, /planId bulunamadi/);
 });
 
 test("transcript_read dokum yoksa yol gosteren hata verir", async () => {
@@ -339,9 +412,7 @@ test("transcript_read dokum yoksa yol gosteren hata verir", async () => {
     assistantText("Once dokum cikarmam gerekiyor."),
   ]);
   await sendMessage(s, "dokumu oku");
-  const block = s.messages
-    .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
-    .find((b) => b.type === "tool_result");
+  const [block] = toolResults(s);
   assert.equal(block.is_error, true);
   assert.match(block.content, /media_transcribe/);
 });
@@ -377,10 +448,7 @@ test("media_transcribe hazir .srt ile calisir ve dokumu baglama dokmez", async (
   await sendMessage(s, "dokumu cikar ve girisi oku");
   assert.equal(s.status, "end_turn");
 
-  const blocks = s.messages
-    .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
-    .filter((b) => b.type === "tool_result");
-
+  const blocks = toolResults(s);
   const summary = JSON.parse(blocks[0].content);
   assert.equal(summary.segments, 2);
   assert.equal(summary.coverage.end, 36);
@@ -394,6 +462,33 @@ test("media_transcribe hazir .srt ile calisir ve dokumu baglama dokmez", async (
   fs.rmSync(work, { recursive: true, force: true });
 });
 
+test("paylasilan durum oturumlar arasinda tasiniyor", async () => {
+  // Claude Code'un cikardigi dokum panel sohbetinde de gecerli olmali.
+  const config = { ...DEFAULTS };
+  const shared = createToolState({ config, bridge: fakeBridge() });
+  shared.transcripts["/v/a.mp4"] = {
+    language: "tr",
+    segments: [{ start: 0, end: 5, text: "onceden cikarilmis dokum" }],
+  };
+
+  const s = createSession({
+    config,
+    client: stubClient([
+      assistantToolUse([{
+        id: "r1",
+        name: "transcript_read",
+        input: { path: "/v/a.mp4", startSeconds: 0, endSeconds: 10 },
+      }]),
+      assistantText("okudum"),
+    ]),
+    state: shared,
+  });
+
+  await sendMessage(s, "dokumu oku");
+  const payload = JSON.parse(toolResults(s)[0].content);
+  assert.match(payload.text, /onceden cikarilmis dokum/);
+});
+
 // ---------------------------------------------------------------- dayaniklilik
 
 test("beta ozellikleri yoksa sade istekle devam eder", async () => {
@@ -404,7 +499,6 @@ test("beta ozellikleri yoksa sade istekle devam eder", async () => {
   assert.equal(s.status, "end_turn");
   assert.equal(s.degraded, true);
   assert.equal(client.calls.length, 2);
-  assert.equal(client.calls[0].beta, true);
   assert.deepEqual(client.calls[0].params.betas, [
     "server-side-fallback-2026-07-01",
     "compact-2026-01-12",
@@ -458,12 +552,16 @@ test("istek araclari ve onbellek isaretiyle gonderilir", async () => {
   assert.equal(params.fallbacks, "default");
 });
 
-test("tur bitmeden yeni mesaj kabul edilmez", async () => {
+test("onay beklerken yeni mesaj kabul edilmez", async () => {
   const s = session([
-    assistantToolUse([{ id: "t1", name: "premiere_get_project", input: {} }]),
+    assistantToolUse([{
+      id: "d1",
+      name: "premiere_delete_clip",
+      input: { trackType: "video", trackIndex: 0, clipIndex: 0, ripple: false },
+    }]),
   ]);
-  await sendMessage(s, "bak");
-  assert.equal(s.status, "awaiting_tools");
+  await sendMessage(s, "sil");
+  assert.equal(s.status, "awaiting_approval");
   await assert.rejects(sendMessage(s, "bir sey daha"), /Onceki tur bitmedi/);
 });
 
@@ -472,9 +570,8 @@ test("bos mesaj reddedilir", async () => {
   await assert.rejects(sendMessage(s, "   "), /Bos mesaj/);
 });
 
-test("bekleyen is yokken sonuc veya onay gonderilemez", async () => {
+test("onay bekleyen islem yokken onay gonderilemez", async () => {
   const s = session([assistantText("x")]);
-  await assert.rejects(submitToolResults(s, []), /Bekleyen arac cagrisi yok/);
   await assert.rejects(resolveApprovals(s, {}), /Onay bekleyen islem yok/);
 });
 
@@ -485,30 +582,21 @@ test("bilinmeyen arac adi dongunun akisini bozmaz", async () => {
   ]);
   await sendMessage(s, "sihir yap");
   assert.equal(s.status, "end_turn");
-  const block = s.messages
-    .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
-    .find((b) => b.type === "tool_result");
-  assert.match(block.content, /Bilinmeyen arac/);
+  assert.match(toolResults(s)[0].content, /Bilinmeyen arac/);
 });
 
-test("sonsuz arac dongusu butceyle kesilir (panel turlari sayaci sifirlamaz)", async () => {
-  // Her turda ayni araci isteyen bir model. Butce kullanicinin mesaji basina
-  // oldugu icin panel sonuc donderdikce sifirlanmamali.
+test("sonsuz arac dongusu cagri butcesiyle kesilir", async () => {
+  // Her turda ayni araci isteyen bir model.
   const responses = Array.from({ length: 200 }, (_, i) =>
     assistantToolUse([{ id: `t${i}`, name: "premiere_get_project", input: {} }]),
   );
-  const client = stubClient(responses);
-  const s = createSession({ config: { ...DEFAULTS }, client });
+  const s = session(responses);
 
   await sendMessage(s, "dongu");
-  let rounds = 0;
-  while (s.status === "awaiting_tools" && rounds++ < 300) {
-    await submitToolResults(s, s.pendingHost.map((c) => ({ id: c.id, content: "{}" })));
-  }
   assert.equal(s.status, "error");
   assert.match(s.error, /model cagrisinda bitmedi/);
   assert.equal(s.modelCalls, s.maxModelCalls);
-  assert.ok(rounds <= 64, `${rounds} turda durdu`);
+  assert.equal(s.testBridge.calls.length, s.maxModelCalls);
 });
 
 test("yeni kullanici mesaji cagri butcesini yeniler", async () => {
@@ -518,7 +606,6 @@ test("yeni kullanici mesaji cagri butcesini yeniler", async () => {
     assistantText("ikinci bitti"),
   ]);
   await sendMessage(s, "bak");
-  await submitToolResults(s, [{ id: "t1", content: "{}" }]);
   assert.equal(s.modelCalls, 2);
 
   await sendMessage(s, "tekrar bak");
@@ -526,7 +613,7 @@ test("yeni kullanici mesaji cagri butcesini yeniler", async () => {
   assert.equal(s.status, "end_turn");
 });
 
-test("sessionView istemciyi ve mesaj gecmisini sizdirmaz", async () => {
+test("sessionView istemciyi, mesaj gecmisini ve sirlari sizdirmaz", async () => {
   const s = session([assistantText("ok")]);
   await sendMessage(s, "selam");
   const view = sessionView(s);
@@ -534,6 +621,7 @@ test("sessionView istemciyi ve mesaj gecmisini sizdirmaz", async () => {
   assert.equal(view.messages, undefined);
   assert.equal(view.apiKey, undefined);
   assert.equal(view.config, undefined);
+  assert.equal(view.bridge, undefined);
   assert.equal(view.messageCount, 2);
   assert.ok(view.usage.output > 0);
 });
@@ -544,7 +632,6 @@ test("kullanim sayaclari tur boyunca birikiyor", async () => {
     assistantText("bitti"),
   ]);
   await sendMessage(s, "bak");
-  await submitToolResults(s, [{ id: "t1", content: "{}" }]);
   assert.equal(s.usage.input, 8 + 5);
   assert.equal(s.usage.output, 9 + 7);
 });

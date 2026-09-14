@@ -260,13 +260,6 @@ test("olmayan ajan oturumu 404, bozuk govde 400 doner", async () => {
     });
     assert.equal(empty.status, 400);
 
-    const badResults = await fetch(`${base}/agent/sessions/${created.session.id}/tool-results`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ results: "dizi degil" }),
-    });
-    assert.equal(badResults.status, 400);
-
     const badApprove = await fetch(`${base}/agent/sessions/${created.session.id}/approve`, {
       method: "POST",
       headers,
@@ -286,6 +279,184 @@ test("ajan uc noktalari token ister", async () => {
     ]) {
       const res = await fetch(base + url, { method });
       assert.equal(res.status, 401, `${method} ${url}`);
+    }
+  });
+});
+
+// ---------------------------------------------------------------- Premiere koprusu
+
+test("kopru baslangicta kapali, yoklama sonrasi acik", async () => {
+  await withServer(async ({ base, token }) => {
+    const headers = { authorization: `Bearer ${token}` };
+
+    const before = await (await fetch(`${base}/host/status`, { headers })).json();
+    assert.equal(before.status.connected, false);
+    assert.equal(before.status.queued, 0);
+
+    // Panelin yoklamasi: kuyruk bos oldugu icin hemen bos donmeli (wait=0)
+    const poll = await (await fetch(`${base}/host/poll?wait=0`, { headers })).json();
+    assert.deepEqual(poll.commands, []);
+    assert.equal(poll.status.connected, true, "yoklama panel bagli demektir");
+
+    const after = await (await fetch(`${base}/host/status`, { headers })).json();
+    assert.equal(after.status.connected, true);
+  });
+});
+
+test("Premiere araci panel bagli degilse anlasilir hata verir", async () => {
+  await withServer(async ({ base, token }) => {
+    const res = await fetch(`${base}/tools/premiere_get_project`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ input: {} }),
+    });
+    assert.equal(res.status, 422);
+    const body = await res.json();
+    assert.match(body.error, /Premiere paneli bagli degil/);
+    assert.match(body.error, /Uzantilar/, "kurulum adimi da soylenmeli");
+  });
+});
+
+test("arac cagrisi kuyruga giriyor, panelin sonucu geri donuyor", async () => {
+  await withServer(async ({ base, token }) => {
+    const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+
+    // Panel bagli olsun
+    await fetch(`${base}/host/poll?wait=0`, { headers });
+
+    // Aracı cagir (yanit panelin sonucunu bekleyecek)
+    const callPromise = fetch(`${base}/tools/premiere_get_sequence`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ input: { sequenceName: "Ana" } }),
+    });
+
+    // Panel uzun-yoklamayla komutu alir
+    const poll = await (await fetch(`${base}/host/poll?wait=5000`, { headers })).json();
+    assert.equal(poll.commands.length, 1);
+    const command = poll.commands[0];
+    assert.equal(command.fn, "gelistirGetSequence");
+    assert.deepEqual(command.args, ["Ana", ""]);
+    assert.equal(command.label, "premiere_get_sequence");
+
+    // Panel sonucu bildirir
+    const done = await (
+      await fetch(`${base}/host/results`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          results: [{ id: command.id, content: JSON.stringify({ ok: true, name: "Ana", duration: 40 }) }],
+        }),
+      })
+    ).json();
+    assert.equal(done.accepted, 1);
+
+    const res = await callPromise;
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.tool, "premiere_get_sequence");
+    assert.deepEqual(body.result, { ok: true, name: "Ana", duration: 40 });
+  });
+});
+
+test("panelin bildirdigi hata arac cagrisina 422 olarak doner", async () => {
+  await withServer(async ({ base, token }) => {
+    const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+    await fetch(`${base}/host/poll?wait=0`, { headers });
+
+    const callPromise = fetch(`${base}/tools/premiere_get_project`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ input: {} }),
+    });
+
+    const poll = await (await fetch(`${base}/host/poll?wait=5000`, { headers })).json();
+    await fetch(`${base}/host/results`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        results: [{
+          id: poll.commands[0].id,
+          content: JSON.stringify({ ok: false, error: "Acik proje yok" }),
+          isError: true,
+        }],
+      }),
+    });
+
+    const res = await callPromise;
+    assert.equal(res.status, 422);
+    assert.match((await res.json()).error, /Acik proje yok/);
+  });
+});
+
+test("bilinmeyen sonuc id'leri yok sayilir", async () => {
+  await withServer(async ({ base, token }) => {
+    const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+    const res = await fetch(`${base}/host/results`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ results: [{ id: "olmayan", content: "{}" }] }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.accepted, 0);
+    assert.equal(body.ignored, 1);
+  });
+});
+
+test("/tools listesi araclari yurutucu ve bayraklariyla verir", async () => {
+  await withServer(async ({ base, token }) => {
+    const res = await fetch(`${base}/tools`, { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 200);
+    const { tools, host } = await res.json();
+
+    assert.ok(tools.length >= 17);
+    const sequence = tools.find((t) => t.name === "premiere_get_sequence");
+    assert.equal(sequence.executor, "host");
+    assert.equal(sequence.readOnly, true);
+    assert.equal(sequence.approval, false);
+    assert.equal(sequence.inputSchema.type, "object");
+
+    const del = tools.find((t) => t.name === "premiere_delete_clip");
+    assert.equal(del.approval, true);
+    assert.equal(del.readOnly, false);
+
+    assert.equal(tools.find((t) => t.name === "build_cut_plan").executor, "core");
+    assert.equal(host.connected, false);
+  });
+});
+
+test("cekirdek araci Premiere gerektirmeden calisir", async () => {
+  await withServer(async ({ base, token }) => {
+    // transcript_read: dokum yok, ama panel de gerekmiyor -> arac hatasi
+    const res = await fetch(`${base}/tools/transcript_read`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ input: { path: "/v/a.mp4", startSeconds: 0, endSeconds: 10 } }),
+    });
+    assert.equal(res.status, 422);
+    assert.match((await res.json()).error, /media_transcribe/);
+  });
+});
+
+test("olmayan arac 404, kopru uc noktalari token ister", async () => {
+  await withServer(async ({ base, token }) => {
+    const res = await fetch(`${base}/tools/uydurma_arac`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(res.status, 404);
+
+    for (const [method, url] of [
+      ["GET", "/host/status"],
+      ["GET", "/host/poll?wait=0"],
+      ["POST", "/host/results"],
+      ["GET", "/tools"],
+      ["POST", "/tools/premiere_get_project"],
+    ]) {
+      const unauth = await fetch(base + url, { method });
+      assert.equal(unauth.status, 401, `${method} ${url}`);
     }
   });
 });

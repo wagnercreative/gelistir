@@ -76,6 +76,7 @@ export const TOOL_SPECS = [
   // ------------------------------------------------ Premiere: okuma
   {
     name: "premiere_get_project",
+    readOnly: true,
     executor: "host",
     approval: false,
     description:
@@ -87,6 +88,7 @@ export const TOOL_SPECS = [
   },
   {
     name: "premiere_get_sequence",
+    readOnly: true,
     executor: "host",
     approval: false,
     description:
@@ -109,6 +111,7 @@ export const TOOL_SPECS = [
   },
   {
     name: "premiere_get_primary_source",
+    readOnly: true,
     executor: "host",
     approval: false,
     description:
@@ -307,6 +310,7 @@ export const TOOL_SPECS = [
   // ------------------------------------------------ Cekirdek araclari
   {
     name: "media_probe",
+    readOnly: true,
     executor: "core",
     approval: false,
     description: "Medya dosyasinin suresini, cozunurlugunu, fps'ini ve ses akisini okur.",
@@ -339,6 +343,7 @@ export const TOOL_SPECS = [
   },
   {
     name: "media_detect_silence",
+    readOnly: true,
     executor: "core",
     approval: false,
     description:
@@ -354,6 +359,7 @@ export const TOOL_SPECS = [
   },
   {
     name: "transcript_read",
+    readOnly: true,
     executor: "core",
     approval: false,
     description:
@@ -372,6 +378,7 @@ export const TOOL_SPECS = [
   },
   {
     name: "build_cut_plan",
+    readOnly: true,
     executor: "core",
     approval: false,
     description:
@@ -713,26 +720,87 @@ export function coreToolNames() {
   return Object.keys(CORE_EXECUTORS);
 }
 
-// ---------------------------------------------------------------- oturum
+// ---------------------------------------------------------------- arac yurutme
 
-export function createSession({ config, apiKey = "", client = null } = {}) {
+/**
+ * Araclarin paylastigi durum: dokumler, planlar, olcumler ve Premiere koprusu.
+ *
+ * Hem ajan oturumu (panel sohbeti) hem MCP istemcileri (Claude Code) ayni
+ * durumu kullanir; boylece Claude Code'da cikarilan dokum panelde de gecerli.
+ */
+export function createToolState({ config, apiKey = "", bridge = null } = {}) {
   return {
-    id: randomUUID().slice(0, 8),
-    createdAt: new Date().toISOString(),
     config,
     apiKey,
-    client: client || createClient(apiKey),
-    messages: [],
-    log: [],
-    status: "idle",
-    error: null,
-    turn: null,
-    pendingHost: [],
-    pendingApproval: [],
+    bridge,
     probes: {},
     transcripts: {},
     silences: {},
     cutPlans: {},
+    log: [],
+  };
+}
+
+export function isCoreTool(name) {
+  return Object.prototype.hasOwnProperty.call(CORE_EXECUTORS, name);
+}
+
+export async function runCoreTool(name, input, state) {
+  if (!isCoreTool(name)) throw new Error(`Cekirdek araci degil: ${name}`);
+  return CORE_EXECUTORS[name](input || {}, state);
+}
+
+/** Premiere araci: komutu kopruye koyar, panelin sonucunu bekler. */
+export async function runHostTool(name, input, state) {
+  const spec = toolSpec(name);
+  if (!spec || spec.executor !== "host") throw new Error(`Premiere araci degil: ${name}`);
+  if (!state.bridge) {
+    throw new Error("Premiere koprusu kurulmamis; `gelistir serve` uzerinden calis.");
+  }
+
+  const args = spec.hostArgs(input || {}, state);
+  const { content, isError } = await state.bridge.run({ fn: spec.hostFn, args, label: name });
+
+  if (isError) {
+    let message = content;
+    try {
+      message = JSON.parse(content).error || content;
+    } catch {
+      // ham metin; oldugu gibi kullan
+    }
+    throw new Error(message);
+  }
+  try {
+    return JSON.parse(content);
+  } catch {
+    return { ok: true, raw: content };
+  }
+}
+
+export async function runTool(name, input, state) {
+  const spec = toolSpec(name);
+  if (!spec) throw new Error(`Bilinmeyen arac: ${name}`);
+  return spec.executor === "core"
+    ? runCoreTool(name, input, state)
+    : runHostTool(name, input, state);
+}
+
+// ---------------------------------------------------------------- oturum
+
+export function createSession({ config, apiKey = "", client = null, state = null } = {}) {
+  // Durum paylasilabilir: panel sohbeti ve Claude Code ayni dokum/plani gorsun.
+  const shared = state || createToolState({ config, apiKey });
+  return {
+    ...shared,
+    id: randomUUID().slice(0, 8),
+    createdAt: new Date().toISOString(),
+    client: client || createClient(apiKey),
+    messages: [],
+    log: shared.log,
+    status: "idle",
+    error: null,
+    turn: null,
+    pendingApproval: [],
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     // Model cagri butcesi kullanicinin mesaji basina. Panel turlari arasinda
     // sifirlanmaz; yoksa host araci -> sonuc -> host araci dongusu hic bitmez.
@@ -828,12 +896,16 @@ async function callModel(session) {
 
 /**
  * Cozulebilecek arac cagrilarini cozer.
- * @returns {Promise<boolean>} true ise onay veya panel bekleniyor
+ *
+ * Premiere araclari da burada beklenir: kopru komutu panele gonderir ve
+ * sonucu bekler. Onay gerektiren bir arac karsilasilinca o arac atlanir,
+ * kardesleri kosar ve tur "onay bekliyor" durumunda durur.
+ *
+ * @returns {Promise<boolean>} true ise kullanicinin onayi bekleniyor
  */
 async function resolveTurn(session) {
   const turn = session.turn;
   const pendingApproval = [];
-  const pendingHost = [];
 
   for (const use of turn.toolUses) {
     if (turn.results.has(use.id)) continue;
@@ -859,42 +931,21 @@ async function resolveTurn(session) {
       }
     }
 
-    if (spec.executor === "core") {
-      try {
-        const output = await CORE_EXECUTORS[use.name](use.input || {}, session);
-        turn.results.set(use.id, okResult(use.id, output));
-      } catch (err) {
-        turn.results.set(use.id, errResult(use.id, err.message || String(err)));
-      }
-      continue;
-    }
-
-    // Premiere araci: paneli calistiracak.
+    session.status = spec.executor === "host" ? "awaiting_tools" : "thinking";
+    session.runningTool = use.name;
     try {
-      pendingHost.push({
-        id: use.id,
-        name: use.name,
-        fn: spec.hostFn,
-        args: spec.hostArgs(use.input || {}, session),
-      });
+      turn.results.set(use.id, okResult(use.id, await runTool(use.name, use.input || {}, session)));
     } catch (err) {
       turn.results.set(use.id, errResult(use.id, err.message || String(err)));
     }
+    session.runningTool = null;
   }
 
   if (pendingApproval.length) {
     session.pendingApproval = pendingApproval;
-    session.pendingHost = [];
     session.status = "awaiting_approval";
     return true;
   }
-  if (pendingHost.length) {
-    session.pendingHost = pendingHost;
-    session.pendingApproval = [];
-    session.status = "awaiting_tools";
-    return true;
-  }
-  session.pendingHost = [];
   session.pendingApproval = [];
   return false;
 }
@@ -967,22 +1018,6 @@ export async function sendMessage(session, text) {
   return drive(session);
 }
 
-/** Panelin Premiere'de calistirdigi araclarin sonuclari. */
-export async function submitToolResults(session, results) {
-  if (!session.turn) throw new Error("Bekleyen arac cagrisi yok");
-  for (const entry of results || []) {
-    const use = session.turn.toolUses.find((u) => u.id === entry.id);
-    if (!use) continue;
-    session.turn.results.set(
-      entry.id,
-      entry.isError
-        ? errResult(entry.id, entry.content || "Premiere araci hata dondurdu")
-        : { type: "tool_result", tool_use_id: entry.id, content: String(entry.content ?? "") },
-    );
-  }
-  return drive(session);
-}
-
 /** decisions: { [toolUseId]: "allow" | "deny" } */
 export async function resolveApprovals(session, decisions) {
   if (!session.turn) throw new Error("Onay bekleyen islem yok");
@@ -1000,7 +1035,7 @@ export function sessionView(session) {
     id: session.id,
     status: session.status,
     error: session.error,
-    pendingHost: session.pendingHost,
+    runningTool: session.runningTool || null,
     pendingApproval: session.pendingApproval.map((p) => ({
       ...p,
       approvalRequired: true,
