@@ -460,3 +460,31 @@ test("olmayan arac 404, kopru uc noktalari token ister", async () => {
     }
   });
 });
+
+test("port kullanimdaysa serve anlasilir hata verir", async () => {
+  const { serve } = await import("../src/server.js");
+  const { DEFAULTS } = await import("../src/config.js");
+  const net = await import("node:net");
+
+  // Portu bir baskasi tutsun
+  const blocker = net.createServer();
+  const port = await new Promise((resolve) => {
+    blocker.listen(0, "127.0.0.1", () => resolve(blocker.address().port));
+  });
+
+  try {
+    await assert.rejects(
+      serve({
+        config: { ...DEFAULTS, host: "127.0.0.1", port },
+        logger: { info: () => {}, error: () => {} },
+      }),
+      (err) => {
+        assert.match(err.message, new RegExp(`Port ${port} kullanimda`));
+        assert.match(err.message, /gelistir config port=/);
+        return true;
+      },
+    );
+  } finally {
+    await new Promise((resolve) => blocker.close(resolve));
+  }
+});

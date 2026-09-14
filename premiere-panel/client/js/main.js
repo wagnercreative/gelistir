@@ -22,6 +22,7 @@
     planJob: null,
     presetPath: localStorage.getItem("gelistir.preset") || "",
     coreHintShown: false,
+    autostartTried: false,
     chatAvailable: false,
     renderedLog: 0,
     chatBusy: false,
@@ -304,6 +305,7 @@
       function (h) {
         state.coreReady = true;
         state.coreHintShown = false;
+        state.autostartTried = false;
         if (coreRetryTimer) {
           clearTimeout(coreRetryTimer);
           coreRetryTimer = null;
@@ -348,17 +350,27 @@
         var authProblem = err.status === 401;
         $("token-row").hidden = !authProblem;
 
-        if (!state.coreHintShown) {
-          state.coreHintShown = true;
-          log(
-            authProblem
-              ? "Token gecersiz. `gelistir token` cikisini yukaridaki alana yapistir."
-              : "Cekirdek calismiyor. Bir terminal acip `gelistir serve` calistir " +
-                  "(Windows'ta sunucu.cmd dosyasina cift tikla), ya da Claude Code'da " +
-                  "premiere MCP sunucusunu kullanan bir oturum ac. Panel kendiliginden " +
-                  "baglanacak.",
-            "warn",
-          );
+        if (authProblem) {
+          if (!state.coreHintShown) {
+            state.coreHintShown = true;
+            log("Token gecersiz. `gelistir token` cikisini yukaridaki alana yapistir.", "warn");
+          }
+        } else if (!state.autostartTried) {
+          // Cekirdek kapali: bir kez kendimiz baslatmayi deneriz. Kullanicinin
+          // her acilista ayri bir pencere acmasi gereksiz.
+          state.autostartTried = true;
+          $("core-status").textContent = "Cekirdek baslatiliyor...";
+          var result = GelistirAutostart.start();
+          if (result.ok) {
+            log("Cekirdek baslatildi: " + result.command, "ok");
+          } else {
+            log("Cekirdek baslatilamadi: " + result.reason, "warn");
+            log(
+              "Elle baslat: depo kokundeki sunucu.cmd (Windows) ya da " +
+                "`sh sunucu.sh`. Panel baglanti kurulunca kendiliginden toparlanir.",
+              "warn",
+            );
+          }
         }
         // Kullaniciyi yenile dugmesine basmaya zorlamayalim: cekirdek
         // sonradan ayaga kalkarsa panel kendi kendine toparlansin.

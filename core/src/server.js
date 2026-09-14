@@ -524,7 +524,32 @@ export async function createServer({ config = loadConfig(), logger = console } =
 
 export async function serve({ config = loadConfig(), logger = console } = {}) {
   const { server, token } = await createServer({ config, logger });
-  await new Promise((resolve) => server.listen(config.port, config.host, resolve));
+
+  // Port kullanimdaysa dinleme 'error' yayar; yakalamazsak surec yakalanmamis
+  // istisna ile duser. Panel cekirdegi kendi baslattiginda bu kolayca olur
+  // (iki panel ayni anda denerse), o yuzden anlasilir bir hata veriyoruz.
+  await new Promise((resolve, reject) => {
+    const onError = (err) => {
+      server.off("listening", onListening);
+      if (err.code === "EADDRINUSE") {
+        reject(
+          new Error(
+            `Port ${config.port} kullanimda. Baska bir gelistir cekirdegi zaten ` +
+              "calisiyor olabilir. Farkli port icin: gelistir config port=8799",
+          ),
+        );
+        return;
+      }
+      reject(err);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(config.port, config.host);
+  });
   logger.info?.(`gelistir-core dinliyor: http://${config.host}:${config.port}`);
   logger.info?.(`Token: ${token}  (${tokenPath()})`);
   return { server, token };

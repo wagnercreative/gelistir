@@ -102,9 +102,16 @@ baglanir.
 
 ### 5. Cekirdegi baslat
 
-Panel calismak icin bir cekirdege baglanmak zorunda. Iki yolu var:
+Panel calismak icin bir cekirdege baglanmak zorunda. **Genelde bir sey
+yapmana gerek yok:** panel cekirdegi kapali bulursa kendisi baslatir
+(`gelistir kurulum --uygula` node yolunu ve depo kokunu ayarlara yazdigi
+icin bunu yapabiliyor). Kayit bolumunde "Cekirdek baslatildi" satirini
+gorursun.
 
-**A) Kalici cekirdek (onerilen).** Bir pencere ac ve acik tut:
+Otomatik baslatma calismazsa (ayarlar eksik, node tasinmis, izin sorunu)
+panel nedenini kayda yazar. O zaman elle:
+
+**A) Kalici cekirdek.** Bir pencere ac ve acik tut:
 
 ```
 sunucu.cmd          (Windows - dosyaya cift tikla)
@@ -119,8 +126,9 @@ ayri bir sey calistirmak gerekmez. Ama cekirdek Claude Code oturumuyla
 beraber yasar: oturum kapaninca panel baglantisini kaybeder (ve kendi
 kendine yeniden baglanir, yeni oturum acildiginda).
 
-Panel, cekirdek yoksa 3 saniyede bir sessizce yeniden dener; once paneli
-acip sonra cekirdegi baslatsan da kendi kendine toparlanir.
+Panel, cekirdek yoksa once bir kez kendisi baslatmayi dener, sonra 3
+saniyede bir yeniden baglanmayi dener; once paneli acip sonra cekirdegi
+baslatsan da kendi kendine toparlanir.
 
 ### 6. Premiere'i ac
 
@@ -353,10 +361,18 @@ oldugu icin panel tam beklerken "kapali" gorunuyordu. `git pull` yapip
 kopyalandigi icin pull tek basina yetmez).
 
 **Panelde "Cekirdege ulasilamadi (http://127.0.0.1:8787)" yaziyor**
-Cekirdek calismiyor. Yukaridaki 5. adim: `sunucu.cmd`'ye cift tikla
-(ya da `sh sunucu.sh`), veya Claude Code'da premiere MCP sunucusunu
-kullanan bir oturum ac. Panel 3 saniyede bir yeniden deniyor, elle bir sey
-yapman gerekmez - cekirdek ayaga kalkinca satir yesile doner.
+Panel cekirdegi kendi baslatmaya calisir; kayda ne yazdigina bak
+(alttaki "Kayit" bolumunu ac):
+
+- *"Cekirdek baslatildi: ..."* - birkac saniye icinde baglanmali.
+- *"Cekirdek baslatilamadi: Ayarlarda node yolu ya da depo koku yok"* -
+  bir kez `gelistir kurulum --uygula` calistir; node yolunu ve depo kokunu
+  o yaziyor.
+- Baska bir neden yaziyorsa elle baslat: `sunucu.cmd`'ye cift tikla
+  (ya da `sh sunucu.sh`).
+
+Cekirdek ayaga kalkinca satir kendiliginden yesile doner, yenile
+dugmesine basmak gerekmez.
 
 Hala olmuyorsa portu kontrol et: `gelistir config` cikisindaki `port`
 degeri panelin baktigi portla ayni olmali. Degistirdiysen paneli kapat-ac.

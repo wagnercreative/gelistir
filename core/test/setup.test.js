@@ -227,3 +227,37 @@ test("tek bir PlayerDebugMode hatasi kurulumu bozmaz", async () => {
 
   fs.rmSync(home, { recursive: true, force: true });
 });
+
+test("plan, panelin cekirdegi baslatmasi icin gereken izleri tasir", () => {
+  const plan = planSetup({ platform: "win32", home: "C:\\U", env: {}, repoRoot });
+  assert.equal(plan.trace.repoRoot, repoRoot);
+  assert.equal(plan.trace.nodePath, process.execPath, "gercek node yolu");
+  assert.match(plan.coreEntry, /core[\\/]bin[\\/]gelistir\.js$/);
+});
+
+test("applySetup depo kokunu ve node yolunu ayarlara yazar", async () => {
+  // Panel bunlari okuyup cekirdegi kendi baslatiyor; panelin icindeki node
+  // Premiere'in kendi sureci oldugu icin baska turlu bulamaz.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "gelistir-iz-"));
+  const savedHome = process.env.HOME;
+  const savedProfile = process.env.USERPROFILE;
+  process.env.HOME = home;
+  process.env.USERPROFILE = home;
+
+  try {
+    const plan = planSetup({ platform: "darwin", home, env: {}, repoRoot });
+    const { done, failed } = await applySetup(plan, { run: async () => {} });
+    assert.deepEqual(failed, []);
+    assert.ok(done.some((d) => d.includes("repoRoot")));
+
+    const written = JSON.parse(
+      fs.readFileSync(path.join(home, ".gelistir", "config.json"), "utf8"),
+    );
+    assert.equal(written.repoRoot, repoRoot);
+    assert.equal(written.nodePath, process.execPath);
+  } finally {
+    if (savedHome !== undefined) process.env.HOME = savedHome;
+    if (savedProfile !== undefined) process.env.USERPROFILE = savedProfile;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

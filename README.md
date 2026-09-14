@@ -169,9 +169,9 @@ claude mcp add premiere -s user -- node "$(pwd)/bin/gelistir-mcp.js"
 Windows'ta `kur.cmd` dosyasina cift tikla (cmd.exe'de `$(pwd)` calismaz).
 macOS/Linux'ta `sh kur.sh`.
 
-Panel bir cekirdege baglanmak zorunda: `sunucu.cmd` (Windows) ya da
-`sh sunucu.sh` ile bir pencere ac ve acik tut. Claude Code'un MCP sunucusu
-da cekirdegi kendi baslatir, ama o oturumla beraber kapanir.
+Panel bir cekirdege baglanmak zorunda ama genelde bir sey yapman gerekmez:
+cekirdegi kapali bulursa kendisi baslatir. Elle baslatmak istersen
+`sunucu.cmd` (Windows) ya da `sh sunucu.sh`.
 
 Adim adim: **[docs/claude-code.md](docs/claude-code.md)**
 

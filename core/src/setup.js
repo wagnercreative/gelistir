@@ -12,6 +12,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { saveConfig } from "./config.js";
+
 /** Premiere surumlerine karsilik gelen CSXS surumleri. */
 export const CSXS_VERSIONS = [9, 10, 11, 12];
 
@@ -103,6 +105,9 @@ export function planSetup({ platform, home, env = {}, repoRoot, copy = false }) 
     existing,
     link,
     mcpEntry,
+    coreEntry: path.join(repoRoot, "core", "bin", "gelistir.js"),
+    // Panel cekirdegi kendi baslatabilsin diye ayarlara yazilacak degerler.
+    trace: { repoRoot, nodePath: process.execPath },
     // -s user olmadan sunucu yalnizca o dizinde gorunur; video kurgularken
     // baska bir klasorde olacaksin, o yuzden kullanici kapsami sart.
     //
@@ -159,6 +164,16 @@ export function formatPlan(plan, { applied = false } = {}) {
 export async function applySetup(plan, { run }) {
   const done = [];
   const failed = [];
+
+  // Depo kokunu ve gercek node yolunu ayarlara yaz. Premiere paneli bunlari
+  // okuyup cekirdegi kendi baslatiyor; panelin icindeki node Premiere'in
+  // kendi sureci oldugu icin bu bilgiyi baska turlu bulamaz.
+  try {
+    saveConfig(plan.trace);
+    done.push(`ayarlara yazildi: repoRoot, nodePath`);
+  } catch (err) {
+    failed.push({ step: "ayarlar", error: err.message });
+  }
 
   // 1. Panel klasoru
   try {

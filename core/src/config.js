@@ -73,6 +73,14 @@ export const DEFAULTS = {
   // --- Premiere ---
   exportPreset: "", // .epr yolu; bos ise ffmpeg ile master alinir
   masterEngine: "ffmpeg", // "ffmpeg" | "premiere"
+
+  // --- Kurulum izleri ---
+  // `gelistir kurulum --uygula` bunlari yazar. Premiere paneli cekirdek
+  // kapali oldugunda kendisi baslatabilsin diye: panelin icindeki node
+  // Premiere'in kendi surecidir, gercek node yolunu ve depo kokunu
+  // baskasinin soylemesi gerekiyor.
+  repoRoot: "",
+  nodePath: "",
 };
 
 export function configPath() {
