@@ -172,6 +172,9 @@
 #tab-isegiris .noticebox .u{text-decoration:underline;font-weight:bold}
 #tab-isegiris .noticebox a{color:#0000ee}
 #tab-isegiris .disclaimer{font-size:10px;color:#444;margin-top:6px;font-style:italic}
+#tab-isegiris .ig-kaynak{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:11px;color:#444}
+#tab-isegiris .ig-kaynak button{font-size:11px;padding:3px 8px}
+#tab-isegiris table.info td.val select+input{margin-top:2px}
 #tab-isegiris .twocol{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 #tab-isegiris .toolbar{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
 #tab-isegiris button{font:inherit;font-weight:bold;padding:7px 12px;border:1px solid #666;border-radius:3px;cursor:pointer;background:#e8e8e8}
@@ -296,7 +299,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         <label>Ünvan</label>
         <input type="text" id="unvan" value="MENEMEN İLÇE MÜFTÜLÜĞÜ- 4B">
         <label>Adres</label>
-        <input type="text" id="adres" value="Yeşiltepe Mah. 170. Sokak No: 4/1 Arsin/TRABZON">
+        <input type="text" id="adres" value="Esatpaşa Mah. Zeytinli Sokak No: 3 Menemen/İZMİR">
         <label>Vergi No</label>
         <input type="text" id="vergiNo" value="4830788387" maxlength="11">
       </div>
@@ -836,12 +839,16 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <div>
         <table class="info">
           <tr><td class="caption" colspan="2">İŞYERİ BİLGİLERİ</td></tr>
-          <tr><td class="lbl">İşyeri Sicil No</td><td class="val"><input id="ig_E2" list="ig_sicilList" maxlength="21" placeholder="21 hane"><datalist id="ig_sicilList"><option value="385590101129965803513"><option value="185590101190902003513"></datalist></td></tr>
+          <tr><td class="lbl">İşyeri Sicil No</td><td class="val"><select id="ig_E2sec" title="Kayıtlı işyeri sicil numaralarından seçin; yeni numara için 'Elle gir'"></select><input id="ig_E2" maxlength="21" placeholder="21 hane" hidden></td></tr>
           <tr><td class="lbl">İşyeri Aracı No</td><td class="val"><input id="ig_E3" maxlength="3" placeholder="000"></td></tr>
           <tr><td class="lbl">İşyeri Unvan</td><td class="val"><input id="ig_E4" maxlength="250"></td></tr>
           <tr><td class="lbl">İşyeri Adres</td><td class="val"><input id="ig_E5" maxlength="200"></td></tr>
           <tr><td class="lbl">Nakil Geldiği İşyeri Sicil</td><td class="val opt"><input id="ig_E6" maxlength="26" placeholder="Varsa 26 hane"></td></tr>
         </table>
+        <div class="ig-kaynak">
+          <span>Bu bilgiler <b>🏢 İŞYERİ</b> sekmesinden gelir. Burada değiştirirseniz bu sekmeye özel kalır.</span>
+          <button type="button" id="ig_btnIsyeriAl" title="İşyeri bilgilerini 🏢 İŞYERİ sekmesindeki değerlerle yeniden doldurur">⟳ İşyeri sekmesinden al</button>
+        </div>
         <div class="disclaimer">Bu program mali işleri yürüten personele kolaylık olması açısından hazırlanmış olup resmiyet içermemektedir. Hesaplama işlemi sonucu kullanıcı tarafından muhakkak kontrol edilmeli, doğrulama sağlandıktan sonra mevzuatsal kontrolü de yapılarak işleme alınmalıdır.</div>
         <div class="hint">Oluşturulan dosya: <b id="ig_J3">SGK_TOPLU_GİRİŞ.xml</b> (indirilenler klasörüne kaydedilir)</div>
       </div>
@@ -2856,9 +2863,53 @@ function readRows(includeEmpty){
   }).filter(o=>includeEmpty || FIELDS.some(f=>o[f]!==''));
 }
 function readIsyeri(){ const o={}; ['E2','E3','E4','E5','E6'].forEach(k=>o[k]=$(k).value.trim()); return o; }
-function getState(){ return {isyeri:readIsyeri(), rows:readRows(false), savedAt:new Date().toISOString()}; }
+
+/* ---- İŞYERİ BİLGİLERİ: kaynak ana "🏢 İŞYERİ" sekmesidir ----
+   Bu sekmede elle düzenleme yapılmadığı sürece alanlar ana sekmeyi izler; elle
+   değiştirilir, listeden seçilir ya da şablondan okunursa bağ kopar ve değerler
+   bu sekmeye özel kalır. "⟳ İşyeri sekmesinden al" bağı yeniden kurar.
+   Nakil Geldiği İşyeri Sicil'in ana sekmede karşılığı yoktur, dokunulmaz. */
+const ANA_ISYERI_ALAN = {E2:'sicilNo', E3:'araciNo', E4:'unvan', E5:'adres'};
+let isyeriElle = false;
+function anaIsyeriOku(){
+  const o={};
+  Object.keys(ANA_ISYERI_ALAN).forEach(k=>{
+    const el=document.getElementById(ANA_ISYERI_ALAN[k]);
+    if(el && el.value.trim()!=='') o[k]=el.value.trim();
+  });
+  return o;
+}
+function anadanEsitle(zorla){
+  if(isyeriElle && !zorla){ sicilSecYenile(); return; }
+  const a=anaIsyeriOku();
+  Object.keys(a).forEach(k=>{ const el=$(k); if(el) el.value=a[k]; });
+  if(zorla){ isyeriElle=false; sicilElleModu=false; }
+  sicilSecYenile();
+  if(zorla){ saveCurrent(true); setStatus('İşyeri bilgileri 🏢 İŞYERİ sekmesinden alındı'); }
+}
+
+/* Sicil No seçmeli: ana sekmedeki ve bilinen numaralar listelenir, "Elle gir" ile yenisi yazılır */
+const BILINEN_SICILLER = ['385590101129965803513','185590101190902003513'];
+const SICIL_ELLE = '__elle';
+let sicilElleModu = false;
+function sicilSecYenile(){
+  const sec=$('E2sec'), inp=$('E2'); if(!sec||!inp) return;
+  const liste=[]; const ekle=v=>{ v=String(v==null?'':v).trim(); if(v && liste.indexOf(v)<0) liste.push(v); };
+  const ana=document.getElementById(ANA_ISYERI_ALAN.E2); if(ana) ekle(ana.value);
+  BILINEN_SICILLER.forEach(ekle);
+  ekle(inp.value);
+  sec.innerHTML = liste.map(v=>'<option value="'+v+'">'+v+'</option>').join('')
+                + '<option value="'+SICIL_ELLE+'">✎ Elle gir…</option>';
+  const mevcut = inp.value.trim();
+  sec.value = (!sicilElleModu && liste.indexOf(mevcut)>=0) ? mevcut : SICIL_ELLE;
+  if(sec.value===SICIL_ELLE) sicilElleModu = true;
+  inp.hidden = !sicilElleModu;
+}
+
+function getState(){ return {isyeri:readIsyeri(), isyeriElle, rows:readRows(false), savedAt:new Date().toISOString()}; }
 function setState(st, keepMin=true){
   const iy = st.isyeri||{}; ['E2','E3','E4','E5','E6'].forEach(k=>$(k).value=iy[k]||'');
+  isyeriElle = !!st.isyeriElle; sicilElleModu = false; sicilSecYenile();
   tbody.innerHTML=''; (st.rows||[]).forEach(r=>addRow(r));
   if(keepMin) ensureRows(Math.max(INITIAL_ROWS,(st.rows||[]).length+5));
 }
@@ -2999,7 +3050,7 @@ function renderArchive(){
   box.querySelectorAll('[data-load]').forEach(b=>b.onclick=()=>{
     const a=getArchive().find(x=>x.id==b.dataset.load); if(!a) return;
     if(!confirm('"'+a.name+'" kaydı yüklensin mi? Ekrandaki mevcut bilgiler değişecek.')) return;
-    setState(a); clearErrors(); closeArch(); setStatus('Arşivden yüklendi: '+a.name);
+    setState(a); isyeriElle=true; clearErrors(); closeArch(); setStatus('Arşivden yüklendi: '+a.name);
   });
   box.querySelectorAll('[data-ren]').forEach(b=>b.onclick=()=>{
     const arc=getArchive(); const a=arc.find(x=>x.id==b.dataset.ren); if(!a) return;
@@ -3117,7 +3168,7 @@ function isyeriFromMatrix(m){
   }
   return bulunan;
 }
-function isyeriUygula(iy){ Object.keys(iy).forEach(k=>{ const el=$(k); if(el) el.value=iy[k]; }); }
+function isyeriUygula(iy){ Object.keys(iy).forEach(k=>{ const el=$(k); if(el) el.value=iy[k]; }); isyeriElle=true; sicilElleModu=false; sicilSecYenile(); }
 
 function rowsFromMatrix(m){
   /* Başlık satırını bul: "TCKimlik" içeren ya da ilk 11 haneli TC bulunan satır */
@@ -3220,11 +3271,28 @@ function igYazdir(){
 }
 
 /* ============ BAŞLANGIÇ ============ */
+/* ana sekmedeki işyeri alanları değiştikçe bu sekme de güncellensin */
+Object.keys(ANA_ISYERI_ALAN).forEach(k=>{
+  const el=document.getElementById(ANA_ISYERI_ALAN[k]);
+  if(el) el.addEventListener('input', ()=>anadanEsitle(false));
+});
+/* bu sekmede elle düzenleme yapılırsa ana sekmeyi izlemeyi bırak */
+['E2','E3','E4','E5'].forEach(k=>{ const el=$(k); if(el) el.addEventListener('input', ()=>{ isyeriElle=true; }); });
+$('E2').addEventListener('change', ()=>sicilSecYenile());
+$('E2sec').onchange=()=>{
+  const sec=$('E2sec'), inp=$('E2');
+  if(sec.value===SICIL_ELLE){ sicilElleModu=true; inp.hidden=false; inp.focus(); return; }
+  sicilElleModu=false; inp.hidden=true;
+  if(inp.value!==sec.value){ inp.value=sec.value; isyeriElle=true; saveCurrent(true); }
+};
+$('btnIsyeriAl').onclick=()=>anadanEsitle(true);
+
 (function init(){
   let st=null;
   try{ st=JSON.parse(localStorage.getItem(KEY_CUR)); }catch(e){}
   if(st && st.isyeri) setState(st);
   else setState({isyeri:DEFAULT_ISYERI, rows:DEFAULT_ROWS});
+  anadanEsitle(false);   /* elle değiştirilmediyse ana İŞYERİ sekmesinden doldur */
   /* sayfa kapanırken otomatik kaydet */
   window.addEventListener('beforeunload',()=>{ try{localStorage.setItem(KEY_CUR,JSON.stringify(getState()));}catch(e){} });
 })();
