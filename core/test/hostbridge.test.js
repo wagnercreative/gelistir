@@ -184,3 +184,42 @@ test("status calisan komut sayisini ve son komutu bildirir", async () => {
   await running;
   assert.equal(bridge.status().running, 0);
 });
+
+test("uzun-yoklama sirasinda panel BAGLI sayilir", async () => {
+  // Gercek hata buydu: yoklama suresi (25 sn) bagliligi penceresinden
+  // (20 sn) uzun oldugu icin panel tam beklerken "bagli degil" duruyordu.
+  // Panelde "Kopru: kapali" yaziyor, arac cagrilari da reddediliyordu.
+  const bridge = createHostBridge({ staleMs: 40, timeoutMs: 5000 });
+
+  const polling = bridge.poll(150);
+  await new Promise((r) => setTimeout(r, 90)); // staleMs gecti
+  assert.equal(bridge.isConnected(), true, "bekleyen yoklama bagliligi kanitlar");
+  assert.equal(bridge.status().connected, true);
+
+  // Ve arac cagrisi reddedilmemeli
+  const running = bridge.run({ fn: "gelistirPing" });
+  const commands = await polling;
+  assert.equal(commands.length, 1);
+  bridge.complete(commands[0].id, { content: '{"ok":true}' });
+  assert.deepEqual(await running, { content: '{"ok":true}', isError: false });
+});
+
+test("bos donen yoklama bagliligi sayacini tazeler", async () => {
+  const bridge = createHostBridge({ staleMs: 60 });
+  const commands = await bridge.poll(80); // bos doner
+  assert.deepEqual(commands, []);
+  // Yoklama 80 ms surdu; tazelenmemis olsa 80 > 60 ile bagli degil olurdu.
+  assert.equal(bridge.isConnected(), true);
+});
+
+test("varsayilan bagliligi penceresi yoklama suresinden uzun", async () => {
+  // server.js varsayilan olarak wait=25000 ile yokluyor.
+  const bridge = createHostBridge();
+  const status = bridge.status();
+  assert.equal(status.connected, false, "hic yoklama yapilmadi");
+  // Pencerenin 25 sn'den buyuk oldugunu dolayli dogrula: 25 sn beklemeden
+  // sonra da bagli kalmali. Zaman harcamamak icin ic degeri sinayamiyoruz,
+  // bu yuzden bekleyen-yoklama kurali yukaridaki testle guvence altinda.
+  await bridge.poll(0);
+  assert.equal(bridge.isConnected(), true);
+});

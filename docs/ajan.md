@@ -3,8 +3,10 @@
 Bu dosya araclarin tamamini, onay modelini ve baglam yonetimini anlatiyor.
 Araclara iki yerden ulasilir:
 
-- **Claude Code (MCP)** - ana yol. Kurulum: [claude-code.md](claude-code.md)
-- **Premiere panelindeki sohbet** - Claude Code kullanmak istemezsen
+- **Claude Code (MCP)** - ana yol, **API anahtari gerekmez** (model Claude
+  Code'un kendi oturumu). Kurulum: [claude-code.md](claude-code.md)
+- **Premiere panelindeki sohbet** - Claude Code kullanmak istemezsen.
+  Kendi `ANTHROPIC_API_KEY`'ini ister, cunku modeli cekirdek cagirir.
 
 Ikisi de ayni araclari, ayni kesim kurallarini ve ayni Premiere koprusunu
 kullanir. Tek fark izni kimin sordugu (asagida).

@@ -24,6 +24,11 @@ Premiere icindeki panel cekirdege baglanip "bana is ver" diye bekliyor.
 > `$(pwd)` calismaz ve `#` ile baslayan satirlar komut sanilir. Windows icin
 > hazir betik var, [asagidaki bolume](#windows-cmdexe) bak.
 
+> **API anahtari gerekmez.** Bu yolda model Claude Code'un kendi oturumu;
+> `ANTHROPIC_API_KEY` yalnizca panelin kendi sohbeti ve `gelistir run`
+> komutu icin gerekiyor. `gelistir doctor` anahtari "istege bagli" olarak
+> isaretler, eksik olmasi sorun degil.
+
 ### 1. ffmpeg (zorunlu)
 
 ```bash
@@ -335,6 +340,17 @@ gelistir config port=8799
 ---
 
 ## Sorun giderme
+
+**Panelde "API anahtari yok" ya da sohbet kutusu kapali**
+Beklenen durum. Panelin kendi sohbeti kendi anahtarini ister; Claude
+Code'dan kullanirken buna ihtiyac yok. Panelin ustundeki "Claude Code'dan
+kullan" kutusu dogru yolu gosterir.
+
+**Panelde "Kopru: kapali" yaziyor ama cekirdek bagli**
+Eski surumde bir hata vardi: yoklama suresi bagliligi penceresinden uzun
+oldugu icin panel tam beklerken "kapali" gorunuyordu. `git pull` yapip
+`gelistir kurulum --uygula` komutunu tekrar calistir (Windows'ta panel
+kopyalandigi icin pull tek basina yetmez).
 
 **Panelde "Cekirdege ulasilamadi (http://127.0.0.1:8787)" yaziyor**
 Cekirdek calismiyor. Yukaridaki 5. adim: `sunucu.cmd`'ye cift tikla

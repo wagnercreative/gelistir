@@ -635,3 +635,72 @@ test("kullanim sayaclari tur boyunca birikiyor", async () => {
   assert.equal(s.usage.input, 8 + 5);
   assert.equal(s.usage.output, 9 + 7);
 });
+
+test("MCP yolu API anahtari olmadan calisir", async () => {
+  // Kullanicinin istedigi sey: her sey Claude Code uzerinden, ayri bir
+  // ANTHROPIC_API_KEY olmadan. Arac yurutme hicbir yerde Anthropic
+  // istemcisi kurmamali.
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), "gelistir-anahtarsiz-"));
+  const { ffmpeg, ffprobe } = makeMediaStubs(work);
+  const media = path.join(work, "cekim.mp4");
+  fs.writeFileSync(media, "sahte");
+  const srt = path.join(work, "cekim.srt");
+  fs.writeFileSync(srt, "1\n00:00:00,000 --> 00:00:04,000\nilk cumle\n");
+
+  const savedKey = process.env.ANTHROPIC_API_KEY;
+  const savedToken = process.env.ANTHROPIC_AUTH_TOKEN;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_AUTH_TOKEN;
+
+  try {
+    const config = { ...DEFAULTS, ffmpeg, ffprobe, thumbnailCandidates: 1 };
+    const bridge = fakeBridge();
+    const state = createToolState({ config, bridge }); // apiKey verilmedi
+    assert.equal(state.client, undefined, "arac durumunda model istemcisi olmamali");
+
+    // Okuma, dokum, plan
+    await runTool("premiere_get_sequence", { sequenceName: "" }, state);
+    await runTool("media_probe", { path: media }, state);
+    await runTool("media_transcribe", { path: media, language: "tr", srtPath: srt }, state);
+    await runTool("media_detect_silence", { path: media }, state);
+    const plan = await runTool(
+      "build_cut_plan",
+      { path: media, includeSilence: true, removals: [] },
+      state,
+    );
+    assert.ok(plan.planId);
+
+    // Kesimleri uygulama (Premiere tarafi)
+    await runTool(
+      "premiere_apply_keeps",
+      { planId: plan.planId, sourcePath: media, newSequenceName: "Test" },
+      state,
+    );
+
+    // Ve yayina hazir paket: metinleri cagiran (Claude Code) veriyor
+    const bundle = await runTool(
+      "deliver_youtube_package",
+      {
+        sourcePath: media,
+        masterPath: "",
+        planId: plan.planId,
+        outDir: path.join(work, "cikti"),
+        title: "Claude Code'un yazdigi baslik",
+        description: "Aciklama",
+        tags: ["kurgu"],
+        hashtags: [],
+        chapters: [],
+        pinnedComment: "",
+      },
+      state,
+    );
+    assert.ok(fs.existsSync(bundle.files.video));
+    const meta = JSON.parse(fs.readFileSync(bundle.files.metadata, "utf8"));
+    assert.equal(meta.title, "Claude Code'un yazdigi baslik");
+    assert.equal(meta.privacyStatus, "private");
+  } finally {
+    if (savedKey !== undefined) process.env.ANTHROPIC_API_KEY = savedKey;
+    if (savedToken !== undefined) process.env.ANTHROPIC_AUTH_TOKEN = savedToken;
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+});

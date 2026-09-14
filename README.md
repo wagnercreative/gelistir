@@ -92,7 +92,8 @@ Ucu de ayni 17 araci ve ayni guvenlik kurallarini kullanir.
 
 ### 1. Claude Code (MCP) - ana yol
 
-Sohbet terminalde, araclar Premiere'de. Kurulum ve ornekler:
+Sohbet terminalde, araclar Premiere'de. **API anahtari gerekmez**: model
+Claude Code'un kendi oturumu. Kurulum ve ornekler:
 **[docs/claude-code.md](docs/claude-code.md)**
 
 ### 2. Premiere panelindeki sohbet
@@ -191,7 +192,7 @@ Premiere paneli ve Chrome eklentisi icin: **[docs/kurulum.md](docs/kurulum.md)**
 |---|---|---|
 | Node.js 18.17+ | cekirdek | zorunlu |
 | ffmpeg + ffprobe | analiz, kesim, kodlama | zorunlu |
-| `ANTHROPIC_API_KEY` | panel sohbeti ve tek tusla akis | Claude Code (MCP) yolunda **gerekmez** |
+| `ANTHROPIC_API_KEY` | yalniz panel sohbeti ve `gelistir run` | **Claude Code (MCP) yolunda gerekmez** - model Claude Code'da |
 | whisper (herhangi biri) | dokum | dolgu sozcugu temizligi, altyazi, bolumler ve metinler uretilemez |
 | Premiere Pro 2021+ | panel | cekirdek yine de tek basina calisir |
 

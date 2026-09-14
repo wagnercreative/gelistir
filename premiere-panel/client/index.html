@@ -22,21 +22,42 @@
       </div>
     </header>
 
-    <!-- Ana arayuz: sohbet. Ne istedigini yaz, ajan Premiere'de yapar. -->
+    <!--
+      Asil kullanim Claude Code'dan (MCP). Bu panel o yolda bir kopru:
+      Claude Code'un istedigi islemleri Premiere'de calistirir ve API
+      anahtari gerektirmez. Asagidaki sohbet kutusu istege bagli bir ek.
+    -->
+    <section class="primary">
+      <h2>Claude Code'dan kullan</h2>
+      <p>
+        Bu panel bir <strong>kopru</strong>. Sohbet Claude Code'da geciyor,
+        panel yalnizca istenen islemleri Premiere'de calistiriyor.
+        <strong>API anahtari gerekmez.</strong>
+      </p>
+      <p class="hint">
+        Ust satirda <em>Kopru acik</em> yaziyorsa hazir. Claude Code'da
+        dene: <code>premiere baglantisini kontrol et</code>
+      </p>
+    </section>
+
     <section class="chat">
       <div id="messages" class="messages">
         <div class="msg system">
           <p>
-            Buradan yazabilirsin; ayni araclari Claude Code'dan da
-            kullanabilirsin (MCP). Ornekler:
+            Panel icinden de yazabilirsin. Bu yol Claude Code'dan bagimsiz
+            calisir ve kendi <code>ANTHROPIC_API_KEY</code>'ini gerektirir.
           </p>
-          <div class="suggestions">
+          <div id="suggestions" class="suggestions">
             <button class="suggest">Sequence'te ne var, bir bak</button>
             <button class="suggest">Dokumu cikar ve videoyu bana ozetle</button>
             <button class="suggest">Sessizlikleri ve dolgu sozcuklerini kes</button>
             <button class="suggest">Bolum onerileri cikar</button>
             <button class="suggest">Bu kurguyu YouTube'a yayina hazirla</button>
           </div>
+          <p id="chat-blocked" class="blocked" hidden>
+            API anahtari ayarli degil, bu kutu calismaz. Claude Code'dan
+            kullanmak icin anahtar gerekmiyor - yukariya bak.
+          </p>
         </div>
       </div>
 

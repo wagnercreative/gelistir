@@ -17,7 +17,10 @@ import { randomUUID } from "node:crypto";
 
 export function createHostBridge({
   timeoutMs = 120000, // bir komutun panelde tamamlanmasi icin ust sinir
-  staleMs = 20000, // bu sureden beri yoklama yoksa panel bagli sayilmaz
+  // Bu sureden beri yoklama yoksa panel bagli sayilmaz. Uzun-yoklama
+  // suresinden (varsayilan 25 sn) BUYUK olmali: aksi halde panel tam da
+  // beklerken "bagli degil" durumuna duser.
+  staleMs = 40000,
   maxQueue = 64,
 } = {}) {
   const commands = new Map(); // id -> kayit
@@ -30,6 +33,10 @@ export function createHostBridge({
   const now = () => Date.now();
 
   function isConnected() {
+    // Uzun-yoklamada bekleyen bir panel varsa tanim geregi baglidir; sureye
+    // bakmak gerekmez. Zamana dayali kontrol yalnizca iki yoklama arasindaki
+    // bosluk icin.
+    if (waiters.size > 0) return true;
     return lastSeenAt > 0 && now() - lastSeenAt < staleMs;
   }
 
@@ -38,6 +45,7 @@ export function createHostBridge({
     for (const waiter of [...waiters]) {
       waiters.delete(waiter);
       clearTimeout(waiter.timer);
+      lastSeenAt = now();
       waiter.resolve(takeQueued());
     }
   }
@@ -116,6 +124,9 @@ export function createHostBridge({
       const waiter = { resolve };
       waiter.timer = setTimeout(() => {
         waiters.delete(waiter);
+        // Bekleme bittiginde panel hala orada: sayaci tazele, yoksa sonraki
+        // yoklamaya kadarki kisa boslukta bagli degil gorunur.
+        lastSeenAt = now();
         resolve([]);
       }, waitMs);
       waiters.add(waiter);

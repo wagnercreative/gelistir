@@ -22,6 +22,7 @@
     planJob: null,
     presetPath: localStorage.getItem("gelistir.preset") || "",
     coreHintShown: false,
+    chatAvailable: false,
     renderedLog: 0,
     chatBusy: false,
     busy: false,
@@ -127,7 +128,7 @@
 
   function setThinking(on) {
     $("thinking").hidden = !on;
-    $("btn-send").disabled = on || !state.coreReady;
+    $("btn-send").disabled = on || !state.coreReady || !state.chatAvailable;
     state.chatBusy = on;
   }
 
@@ -200,6 +201,14 @@
   function sendChat(text) {
     var message = String(text || $("input").value || "").trim();
     if (!message || state.chatBusy) return;
+    if (!state.chatAvailable) {
+      addMessage(
+        "error",
+        "Panel sohbeti icin ANTHROPIC_API_KEY gerekli. Claude Code'dan " +
+          "kullanmak icin anahtar gerekmiyor.",
+      );
+      return;
+    }
     $("input").value = "";
     setThinking(true);
 
@@ -303,22 +312,30 @@
         $("core-status").className = "status ok";
         $("token-row").hidden = true;
 
+        // Cipler yalnizca arac durumunu gosterir. API anahtari buraya
+        // konmuyordu cunku MCP yolunda gerekmiyor; gereksiz yere "eksik bir
+        // sey var" izlenimi veriyordu.
         $("chips").innerHTML = "";
         [
           chip("ffmpeg", h.ffmpeg),
           chip("ffprobe", h.ffprobe),
           chip(h.whisper ? "whisper" : "whisper yok", Boolean(h.whisper)),
-          chip(h.hasApiKey ? "API anahtari" : "API anahtari yok", h.hasApiKey),
         ].forEach(function (c) {
           $("chips").appendChild(c);
         });
 
         if (!h.ffmpeg) log("ffmpeg bulunamadi - kesim ve kodlama yapilamaz.", "error");
         if (!h.whisper) log("whisper yok: dokum, altyazi ve bolumler uretilemez.", "warn");
-        if (!h.hasApiKey) {
-          log("ANTHROPIC_API_KEY yok: panel sohbeti calismaz. Claude Code'dan " +
-              "MCP ile kullanmak icin anahtar gerekmez.", "warn");
-        }
+
+        // Panel sohbeti kendi anahtarini ister; Claude Code yolu istemez.
+        state.chatAvailable = Boolean(h.hasApiKey);
+        $("chat-blocked").hidden = state.chatAvailable;
+        $("suggestions").hidden = !state.chatAvailable;
+        $("input").disabled = !state.chatAvailable;
+        $("input").placeholder = state.chatAvailable
+          ? "Ornek: girisi kisalt ve sessizlikleri at"
+          : "Panel sohbeti icin ANTHROPIC_API_KEY gerekli";
+
         startExecutor();
       },
       function (err) {
@@ -379,7 +396,7 @@
   }
 
   function refreshButtons() {
-    $("btn-send").disabled = state.chatBusy || !state.coreReady;
+    $("btn-send").disabled = state.chatBusy || !state.coreReady || !state.chatAvailable;
     if (state.busy) return;
     $("btn-analyze").disabled = !(state.hostReady && state.coreReady);
     $("btn-apply").disabled = !(state.planJob && state.hostReady);

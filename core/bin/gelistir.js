@@ -196,13 +196,27 @@ async function main() {
       }
       return bin;
     });
-    await check("ANTHROPIC_API_KEY", async () => {
+    // Anahtar zorunlu degil: Claude Code (MCP) yolunda model Claude Code'da.
+    await check("ANTHROPIC_API_KEY (istege bagli)", async () => {
       if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
-        throw new Error("ayarli degil");
+        throw new Error(
+          "ayarli degil - Claude Code (MCP) yolunda GEREKMEZ; " +
+            "panel sohbeti ve `gelistir run` icin gerekli",
+        );
       }
       return "ayarli";
     });
-    process.stdout.write(`\nModel: ${cfg.model}\nAyarlar: ${configPath()}\n`);
+    process.stdout.write(
+      [
+        "",
+        `Model: ${cfg.model}`,
+        `Ayarlar: ${configPath()}`,
+        "",
+        "Claude Code'dan kullanacaksan API anahtari gerekmez; MCP araclarini",
+        "Claude Code'un kendi oturumu kosturur.",
+        "",
+      ].join("\n"),
+    );
     return;
   }
 
